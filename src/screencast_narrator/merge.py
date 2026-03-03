@@ -25,6 +25,11 @@ from screencast_narrator.sync_detect import (
     detect_sync_frames,
     strip_sync_frames,
 )
+from screencast_narrator.timeline_html import (
+    generate_adjusted_html,
+    generate_combined_html,
+    generate_original_html,
+)
 from screencast_narrator.tts import KokoroTTS, TTSBackend
 
 
@@ -76,6 +81,10 @@ def process(target_dir: Path, tts_backend: TTSBackend | None = None) -> None:
     else:
         _run_wall_clock_pipeline(video_file, narrations, highlights,
                                  timeline_root, audio_dir, temp_dir, output_file)
+
+    generate_original_html(target_dir)
+    generate_adjusted_html(target_dir)
+    generate_combined_html(target_dir)
 
 
 def _segment_name(index: int) -> str:
