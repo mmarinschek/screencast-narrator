@@ -107,91 +107,91 @@ def _read_timeline(target_dir: Path) -> tuple[dict, list[dict], list[dict], list
 
 
 _BASE_CSS = """
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     background: #fff; color: #1a1a2e; padding: 24px;
-  }
-  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-  .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 4px; }
-  .legend { color: #6b7280; font-size: 12px; margin-bottom: 20px; }
-  .legend span { display: inline-block; margin-right: 16px; }
-  .legend .swatch {
+  }}
+  h1 {{ font-size: 20px; font-weight: 700; margin-bottom: 4px; }}
+  .subtitle {{ color: #6b7280; font-size: 13px; margin-bottom: 4px; }}
+  .legend {{ color: #6b7280; font-size: 12px; margin-bottom: 20px; }}
+  .legend span {{ display: inline-block; margin-right: 16px; }}
+  .legend .swatch {{
     display: inline-block; width: 14px; height: 14px;
     vertical-align: middle; margin-right: 4px; border-radius: 2px;
-  }
-  .timeline-container { display: flex; gap: 0; position: relative; }
-  .band { position: relative; flex-shrink: 0; }
-  .band-header {
+  }}
+  .timeline-container {{ display: flex; gap: 0; position: relative; }}
+  .band {{ position: relative; flex-shrink: 0; }}
+  .band-header {{
     position: sticky; top: 0; z-index: 10;
     background: #1e293b; color: #e2e8f0;
     font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.5px;
     padding: 8px 12px; height: {header_height}px;
     display: flex; align-items: center;
-  }
+  }}
   .band-body {{ position: relative; height: {total_height}px; }}
   .time-band {{ width: {time_width}px; }}
-  .time-band .band-body { background: #f8f9fa; border-right: 2px solid #cbd5e1; }
+  .time-band .band-body {{ background: #f8f9fa; border-right: 2px solid #cbd5e1; }}
   .freeze-band {{ width: {freeze_width}px; }}
-  .freeze-band .band-body { background: #fefce8; border-right: 2px solid #cbd5e1; }
-  .narr-band .band-body { background: #fafbfc; border-right: 2px solid #cbd5e1; }
-  .action-band .band-body { background: #f0fdf4; border-right: 2px solid #cbd5e1; }
-  .hl-band .band-body { background: #fff5f5; }
+  .freeze-band .band-body {{ background: #fefce8; border-right: 2px solid #cbd5e1; }}
+  .narr-band .band-body {{ background: #fafbfc; border-right: 2px solid #cbd5e1; }}
+  .action-band .band-body {{ background: #f0fdf4; border-right: 2px solid #cbd5e1; }}
+  .hl-band .band-body {{ background: #fff5f5; }}
 
-  .tick-line { position: absolute; left: 0; right: 0; border-top: 1px solid #e5e7eb; z-index: 1; }
-  .tick-line.major { border-top: 1px solid #94a3b8; }
-  .tick-label {
+  .tick-line {{ position: absolute; left: 0; right: 0; border-top: 1px solid #e5e7eb; z-index: 1; }}
+  .tick-line.major {{ border-top: 1px solid #94a3b8; }}
+  .tick-label {{
     position: absolute; right: 8px; font-size: 10px; color: #94a3b8;
     transform: translateY(-50%); white-space: nowrap; font-variant-numeric: tabular-nums;
-  }
-  .tick-label.major { color: #334155; font-weight: 700; font-size: 11px; }
+  }}
+  .tick-label.major {{ color: #334155; font-weight: 700; font-size: 11px; }}
 
-  .freeze-block {
+  .freeze-block {{
     position: absolute; left: 4px; right: 4px;
     background: repeating-linear-gradient(45deg, #fbbf24, #fbbf24 3px, #fef3c7 3px, #fef3c7 6px);
     border-radius: 2px; z-index: 2; min-height: 2px; border: 1px solid #f59e0b;
-  }
-  .gap-cut-block {
+  }}
+  .gap-cut-block {{
     position: absolute; left: 4px; right: 4px;
     background: repeating-linear-gradient(-45deg, #f87171, #f87171 3px, #fecaca 3px, #fecaca 6px);
     border-radius: 2px; z-index: 2; min-height: 2px; border: 1px solid #ef4444;
-  }
+  }}
 
-  .narr-block {
+  .narr-block {{
     position: absolute; border-radius: 4px; padding: 5px 8px;
     font-size: 11px; line-height: 1.4; border-left: 4px solid; z-index: 2;
-  }
-  .narr-time {
+  }}
+  .narr-time {{
     font-size: 10px; font-weight: 700; margin-bottom: 2px;
     white-space: nowrap; font-variant-numeric: tabular-nums;
-  }
-  .narr-text { font-size: 11px; line-height: 1.35; word-wrap: break-word; }
-  .audio-bar {
+  }}
+  .narr-text {{ font-size: 11px; line-height: 1.35; word-wrap: break-word; }}
+  .audio-bar {{
     position: absolute; left: 0; right: 0; bottom: 0;
     border-radius: 0 0 4px 0; opacity: 0.3; z-index: 1;
-  }
+  }}
 
-  .action-dot {
+  .action-dot {{
     position: absolute; left: 4px; right: 4px; border-radius: 3px;
     padding: 2px 6px; font-size: 10px; line-height: 1.3; z-index: 2;
     border-left: 3px solid; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis;
-  }
-  .action-time { font-size: 9px; font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px; }
-  .action-desc { font-size: 10px; }
+  }}
+  .action-time {{ font-size: 9px; font-weight: 600; font-variant-numeric: tabular-nums; margin-right: 4px; }}
+  .action-desc {{ font-size: 10px; }}
 
-  .hl-block {
+  .hl-block {{
     position: absolute; left: 8px; right: 8px;
     background: #fecdd3; border-radius: 2px; border-left: 3px solid #fb7185;
     z-index: 2; min-height: 2px;
-  }
+  }}
 
-  .grid-line {
+  .grid-line {{
     position: absolute; left: 0; right: 0; border-top: 1px dashed #f0f0f0;
     pointer-events: none; z-index: 0;
-  }
-  .grid-line.major { border-top: 1px dashed #e0e0e0; }
+  }}
+  .grid-line.major {{ border-top: 1px dashed #e0e0e0; }}
 """
 
 
