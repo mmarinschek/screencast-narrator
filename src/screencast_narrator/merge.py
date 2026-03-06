@@ -209,6 +209,11 @@ def _to_stripped_video_narrations(
     green_frame_indices: set[int],
     timeline_root: dict,
 ) -> list[NarrationSegment]:
+    from screencast_narrator.sync_detect import _count_less_than
+
+    video_offset = _video_recording_offset(timeline_root)
+    sorted_green = sorted(green_frame_indices)
+
     adjusted: list[NarrationSegment] = []
     for i, n in enumerate(narrations):
         key = f"{i}|START"
@@ -221,9 +226,16 @@ def _to_stripped_video_narrations(
                 NarrationSegment(sync_start_ms, sync_start_ms + stripped_bracket, n.text, n.audio_duration_ms)
             )
         else:
-            video_offset = _video_recording_offset(timeline_root)
-            adj_start = max(0, n.start_ms - video_offset)
-            adj_end = max(0, n.end_ms - video_offset)
+            raw_start_ms = max(0, n.start_ms - video_offset)
+            raw_end_ms = max(0, n.end_ms - video_offset)
+            # Convert wall-clock ms to frame index (ffmpeg extracts at 25fps CFR)
+            frame_start = int(raw_start_ms * 25 / 1000)
+            frame_end = int(raw_end_ms * 25 / 1000)
+            # Subtract green frames removed before each position (same as build_sync_position_map)
+            green_before_start = _count_less_than(sorted_green, frame_start)
+            green_before_end = _count_less_than(sorted_green, frame_end)
+            adj_start = (frame_start - green_before_start) * 40
+            adj_end = (frame_end - green_before_end) * 40
             adjusted.append(NarrationSegment(adj_start, adj_end, n.text, n.audio_duration_ms))
     return adjusted
 

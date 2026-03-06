@@ -33,8 +33,10 @@ class SyncDetectionResult:
 
 def is_green_frame(img: Image.Image) -> bool:
     w, h = img.size
-    sample_x = [0, w // 4, w // 2, 3 * w // 4, w - 1]
-    sample_y = [0, h // 4, h // 2, 3 * h // 4, h - 1]
+    margin_x = max(1, w // 10)
+    margin_y = max(1, h // 10)
+    sample_x = [margin_x, w // 4, w // 2, 3 * w // 4, w - 1 - margin_x]
+    sample_y = [margin_y, h // 4, h // 2, 3 * h // 4, h - 1 - margin_y]
     green_count = 0
     total = 0
     for sx in sample_x:
