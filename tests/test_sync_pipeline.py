@@ -1,71 +1,10 @@
-"""Port of SyncPipelineAudioPositionTest.java — sync pipeline audio delay computation."""
-
-from dataclasses import dataclass
+"""Sync pipeline tests: building narrations from sync positions and computing audio delays."""
 
 from screencast_narrator.freeze_frames import FreezeFrameCalculator, NarrationSegment
+from screencast_narrator.merge import _build_narrations_from_sync
+from screencast_narrator.shared_config import load_shared_config
 
-FRAME_DURATION_S = 0.04  # 25fps
-
-
-@dataclass(frozen=True)
-class SyncFrameSpan:
-    narration_id: int
-    marker: str
-    first_frame: int
-    last_frame: int
-
-
-def compute_sync_pipeline_audio_delays(
-    narrations: list[NarrationSegment],
-    sync_frame_spans: list[SyncFrameSpan],
-) -> list[int]:
-    stripped_narrations = to_stripped_video_narrations(narrations, sync_frame_spans)
-    result = FreezeFrameCalculator(stripped_narrations, []).calculate()
-    return result.adjusted_timestamps
-
-
-def to_stripped_video_narrations(
-    narrations: list[NarrationSegment],
-    sync_frame_spans: list[SyncFrameSpan],
-) -> list[NarrationSegment]:
-    sync_positions = build_sync_position_map(sync_frame_spans)
-    adjusted: list[NarrationSegment] = []
-    for i, n in enumerate(narrations):
-        key = f"{i}|START"
-        if key in sync_positions:
-            sync_start_ms = int(sync_positions[key] * 1000)
-            wall_clock_bracket = n.end_ms - n.start_ms
-            sync_time_ms = sync_frame_time_in_bracket_ms(sync_frame_spans, i)
-            stripped_bracket = max(0, wall_clock_bracket - sync_time_ms)
-            adjusted.append(
-                NarrationSegment(sync_start_ms, sync_start_ms + stripped_bracket, n.text, n.audio_duration_ms)
-            )
-        else:
-            adjusted.append(n)
-    return adjusted
-
-
-def build_sync_position_map(spans: list[SyncFrameSpan]) -> dict[str, float]:
-    sorted_spans = sorted(spans, key=lambda s: s.first_frame)
-    positions: dict[str, float] = {}
-    stripped_frames_before = 0
-
-    for span in sorted_spans:
-        original_position_s = span.first_frame * FRAME_DURATION_S
-        adjusted_position_s = original_position_s - (stripped_frames_before * FRAME_DURATION_S)
-        key = f"{span.narration_id}|{span.marker}"
-        positions[key] = adjusted_position_s
-        stripped_frames_before += span.last_frame - span.first_frame + 1 + 2
-
-    return positions
-
-
-def sync_frame_time_in_bracket_ms(sync_frame_spans: list[SyncFrameSpan], narration_id: int) -> int:
-    total = 0
-    for s in sync_frame_spans:
-        if s.narration_id == narration_id:
-            total += (s.last_frame - s.first_frame + 1 + 2) * 40
-    return total
+_SM = load_shared_config().sync_markers
 
 
 def assert_no_audio_overlap(audio_delays: list[int], narrations: list[NarrationSegment]) -> None:
@@ -77,52 +16,50 @@ def assert_no_audio_overlap(audio_delays: list[int], narrations: list[NarrationS
         )
 
 
-def test_bracket_duration_should_exclude_sync_frame_display_time():
-    narrations = [
-        NarrationSegment(1000, 3000, "first narration", 3000),
-        NarrationSegment(3500, 5500, "second narration", 3000),
-    ]
-    sync_frame_spans = [
-        SyncFrameSpan(0, "START", 25, 28),
-        SyncFrameSpan(0, "HL_START", 35, 38),
-        SyncFrameSpan(0, "HL_END", 45, 48),
-        SyncFrameSpan(1, "START", 87, 90),
-    ]
-    audio_delays = compute_sync_pipeline_audio_delays(narrations, sync_frame_spans)
-    assert_no_audio_overlap(audio_delays, narrations)
+def test_build_narrations_and_compute_delays():
+    sync_positions = {
+        _SM.narration_start(0): 1.0,
+        _SM.narration_end(0): 3.0,
+        _SM.narration_start(1): 3.5,
+        _SM.narration_end(1): 5.5,
+    }
+    narrations = _build_narrations_from_sync(
+        ["first narration", "second narration"],
+        [3000, 3000],
+        sync_positions,
+    )
+    result = FreezeFrameCalculator(narrations, []).calculate()
+    assert_no_audio_overlap(result.adjusted_timestamps, narrations)
 
 
-def test_many_narrations_with_sync_frames_should_not_overlap():
-    narrations: list[NarrationSegment] = []
-    sync_frame_spans: list[SyncFrameSpan] = []
-    frame = 0
+def test_many_narrations_should_not_overlap():
+    sync_positions: dict[str, float] = {}
+    texts: list[str] = []
+    audio_durations: list[int] = []
+    pos = 0.0
 
     for i in range(5):
-        bracket_start = i * 5000
-        bracket_end = bracket_start + 3000
-        narrations.append(NarrationSegment(bracket_start, bracket_end, f"narration {i}", 4000))
-        sync_frame_spans.append(SyncFrameSpan(i, "START", frame, frame + 3))
-        frame += 10
-        sync_frame_spans.append(SyncFrameSpan(i, "HL_START", frame, frame + 3))
-        frame += 10
-        sync_frame_spans.append(SyncFrameSpan(i, "HL_END", frame, frame + 3))
-        frame += 50
+        sync_positions[_SM.narration_start(i)] = pos
+        pos += 3.0
+        sync_positions[_SM.narration_end(i)] = pos
+        pos += 0.5
+        texts.append(f"narration {i}")
+        audio_durations.append(4000)
 
-    audio_delays = compute_sync_pipeline_audio_delays(narrations, sync_frame_spans)
-    assert_no_audio_overlap(audio_delays, narrations)
+    narrations = _build_narrations_from_sync(texts, audio_durations, sync_positions)
+    result = FreezeFrameCalculator(narrations, []).calculate()
+    assert_no_audio_overlap(result.adjusted_timestamps, narrations)
 
 
-def test_single_narration_with_sync_frames_should_get_correct_freeze_duration():
-    narrations = [NarrationSegment(0, 2000, "only narration", 5000)]
-    sync_frame_spans = [
-        SyncFrameSpan(0, "START", 0, 3),
-        SyncFrameSpan(0, "HL_START", 10, 13),
-        SyncFrameSpan(0, "HL_END", 30, 33),
-    ]
-    adjusted = to_stripped_video_narrations(narrations, sync_frame_spans)
-    stripped_bracket = adjusted[0].end_ms - adjusted[0].start_ms
-    assert stripped_bracket < 2000
+def test_single_narration_freeze_duration():
+    sync_positions = {
+        _SM.narration_start(0): 0.0,
+        _SM.narration_end(0): 2.0,
+    }
+    narrations = _build_narrations_from_sync(["only narration"], [5000], sync_positions)
+    result = FreezeFrameCalculator(narrations, []).calculate()
 
-    result = FreezeFrameCalculator(adjusted, []).calculate()
-    freeze_duration = result.freeze_frames[0].duration_ms
-    assert freeze_duration == 5000 - stripped_bracket
+    bracket_duration = narrations[0].end_ms - narrations[0].start_ms
+    assert bracket_duration == 2000
+    assert len(result.freeze_frames) == 1
+    assert result.freeze_frames[0].duration_ms == 3000

@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Schema for timeline.json — produced by the merge pipeline with computed timing data.",
+  "type": "object",
+  "required": ["narrations", "freezeFrames", "gapCuts"],
+  "properties": {
+    "narrations": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/timelineNarration" }
+    },
+    "freezeFrames": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/freezeFrame" }
+    },
+    "gapCuts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/gapCut" }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "timelineNarration": {
+      "type": "object",
+      "required": ["narrationId", "text", "timestampMs", "endTimestampMs", "audioDurationMs", "bracketStartMs", "bracketEndMs"],
+      "properties": {
+        "narrationId": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "timestampMs": { "type": "integer", "description": "Audio start time in extended video (ms)" },
+        "endTimestampMs": { "type": "integer", "description": "Audio end time in extended video (ms)" },
+        "audioDurationMs": { "type": "integer", "minimum": 0 },
+        "bracketStartMs": { "type": "integer", "minimum": 0, "description": "Original bracket start in stripped video (ms)" },
+        "bracketEndMs": { "type": "integer", "minimum": 0, "description": "Original bracket end in stripped video (ms)" },
+        "screenActions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["screenActionId"],
+            "properties": {
+              "screenActionId": { "type": "integer", "minimum": 0 },
+              "description": { "type": "string" },
+              "timing": { "type": "string", "enum": ["elastic", "timed"] },
+              "durationMs": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "freezeFrame": {
+      "type": "object",
+      "required": ["timeMs", "durationMs"],
+      "properties": {
+        "timeMs": { "type": "integer", "minimum": 0 },
+        "durationMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "gapCut": {
+      "type": "object",
+      "required": ["startMs", "endMs"],
+      "properties": {
+        "startMs": { "type": "integer", "minimum": 0 },
+        "endMs": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

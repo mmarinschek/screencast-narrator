@@ -2,23 +2,35 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image
 from pyzbar.pyzbar import decode as pyzbar_decode
 
+from screencast_narrator.shared_config import load_shared_config
+from screencast_narrator_client.generated.storyboard_types import (
+    ScreenAction,
+    ScreenActionTiming,
+    ScreenActionType,
+)
+
+_SM = load_shared_config().sync_markers
+
 
 @dataclass(frozen=True)
 class SyncMarker:
-    narration_id: int
+    sync_type: str
+    entity_id: int
     marker: str
     frame_index: int
 
 
 @dataclass(frozen=True)
 class SyncFrameSpan:
-    narration_id: int
+    sync_type: str
+    entity_id: int
     marker: str
     first_frame: int
     last_frame: int
@@ -29,6 +41,10 @@ class SyncDetectionResult:
     qr_spans: list[SyncFrameSpan]
     green_frame_indices: set[int]
     total_frames: int
+    narration_texts: dict[int, str] = field(default_factory=dict)
+    narration_translations: dict[int, dict[str, str]] = field(default_factory=dict)
+    screen_actions: dict[int, ScreenAction] = field(default_factory=dict)
+    init_data: dict = field(default_factory=dict)
 
 
 def is_green_frame(img: Image.Image) -> bool:
@@ -60,6 +76,10 @@ def decode_qr(img: Image.Image, frame_index: int) -> str:
     return results[0].data.decode("utf-8")
 
 
+def _parse_qr_payload(decoded: str) -> dict:
+    return json.loads(decoded)
+
+
 def detect_sync_frames(video_path: Path, temp_dir: Path) -> SyncDetectionResult:
     from screencast_narrator.ffmpeg import exec_ffmpeg
 
@@ -72,26 +92,91 @@ def detect_sync_frames(video_path: Path, temp_dir: Path) -> SyncDetectionResult:
 
     markers: list[SyncMarker] = []
     green_frame_indices: set[int] = set()
+    narration_texts: dict[int, str] = {}
+    narration_translations: dict[int, dict[str, str]] = {}
+    screen_actions: dict[int, ScreenAction] = {}
+    init_data: dict = {}
+
+    continuation_buffer: list[str | None] = []
+    continuation_total: int = 0
+    init_seen = False
 
     for i, frame_path in enumerate(frame_paths):
         img = Image.open(frame_path)
         if not is_green_frame(img):
+            if continuation_buffer:
+                continuation_buffer = []
+                continuation_total = 0
             continue
 
         green_frame_indices.add(i)
         decoded = decode_qr(img, i)
+        payload = _parse_qr_payload(decoded)
 
-        if not decoded.startswith("SYNC|"):
-            raise RuntimeError(f"Green frame {i} ({i * 0.04:.3f}s) has unexpected QR content: {decoded}")
-        parts = decoded.split("|")
-        if len(parts) != 3:
-            raise RuntimeError(f"Green frame {i} ({i * 0.04:.3f}s) has malformed SYNC marker: {decoded}")
-        narration_id = int(parts[1])
-        marker_type = parts[2]
-        markers.append(SyncMarker(narration_id, marker_type, i))
+        if "_c" in payload:
+            seq, total = payload["_c"]
+            if seq == 0:
+                continuation_buffer = [None] * total
+                continuation_total = total
+            if continuation_total == total and seq < len(continuation_buffer):
+                continuation_buffer[seq] = payload["d"]
+            if all(c is not None for c in continuation_buffer):
+                full_json = "".join(continuation_buffer)  # type: ignore[arg-type]
+                payload = _parse_qr_payload(full_json)
+                continuation_buffer = []
+                continuation_total = 0
+            else:
+                continue
+
+        sync_type = payload["t"]
+        if sync_type not in _SM.all_types:
+            raise RuntimeError(f"Green frame {i} ({i * 0.04:.3f}s) has unknown type: {sync_type}")
+
+        if sync_type == _SM.init:
+            init_data = payload
+            init_seen = True
+            continue
+
+        if not init_seen:
+            raise RuntimeError(
+                f"Sync frame at frame {i} ({i * 0.04:.3f}s) appeared before the init frame. "
+                f"The init frame must be the first sync frame in the video. "
+                f"Make sure Storyboard is initialized before any narration or screen action begins."
+            )
+
+        entity_id = payload["id"]
+        marker_type = payload["m"]
+
+        if sync_type == _SM.narration and marker_type == _SM.start:
+            if "tx" in payload:
+                narration_texts[entity_id] = payload["tx"]
+            if "tr" in payload:
+                narration_translations[entity_id] = payload["tr"]
+
+        if sync_type == _SM.action and marker_type == _SM.start:
+            st_raw = payload.get("st")
+            tm_raw = payload.get("tm")
+            screen_actions[entity_id] = ScreenAction(
+                type=ScreenActionType(st_raw) if st_raw else ScreenActionType.navigate,
+                screen_action_id=entity_id,
+                description=payload.get("desc"),
+                timing=ScreenActionTiming(tm_raw) if tm_raw else None,
+                duration_ms=payload.get("dur"),
+            )
+
+        if sync_type == _SM.highlight and marker_type == _SM.start:
+            screen_actions[entity_id] = ScreenAction(
+                type=ScreenActionType.highlight,
+                screen_action_id=entity_id,
+            )
+
+        markers.append(SyncMarker(sync_type, entity_id, marker_type, i))
 
     spans = group_into_spans(markers)
-    return SyncDetectionResult(spans, green_frame_indices, len(frame_paths))
+    return SyncDetectionResult(
+        spans, green_frame_indices, len(frame_paths),
+        narration_texts, narration_translations, screen_actions, init_data,
+    )
 
 
 def group_into_spans(markers: list[SyncMarker]) -> list[SyncFrameSpan]:
@@ -101,20 +186,27 @@ def group_into_spans(markers: list[SyncMarker]) -> list[SyncFrameSpan]:
     first = markers[0]
     span_first = first.frame_index
     span_last = first.frame_index
-    span_narration_id = first.narration_id
+    span_sync_type = first.sync_type
+    span_entity_id = first.entity_id
     span_marker = first.marker
 
     for m in markers[1:]:
-        if m.narration_id == span_narration_id and m.marker == span_marker and m.frame_index <= span_last + 2:
+        if (
+            m.sync_type == span_sync_type
+            and m.entity_id == span_entity_id
+            and m.marker == span_marker
+            and m.frame_index <= span_last + 2
+        ):
             span_last = m.frame_index
         else:
-            spans.append(SyncFrameSpan(span_narration_id, span_marker, span_first, span_last))
+            spans.append(SyncFrameSpan(span_sync_type, span_entity_id, span_marker, span_first, span_last))
             span_first = m.frame_index
             span_last = m.frame_index
-            span_narration_id = m.narration_id
+            span_sync_type = m.sync_type
+            span_entity_id = m.entity_id
             span_marker = m.marker
 
-    spans.append(SyncFrameSpan(span_narration_id, span_marker, span_first, span_last))
+    spans.append(SyncFrameSpan(span_sync_type, span_entity_id, span_marker, span_first, span_last))
     return spans
 
 
@@ -194,7 +286,7 @@ def build_sync_position_map(spans: list[SyncFrameSpan], green_frame_indices: set
     for span in sorted_spans:
         green_before = _count_less_than(sorted_green, span.first_frame)
         adjusted_position_s = (span.first_frame - green_before) * 0.04
-        key = f"{span.narration_id}|{span.marker}"
+        key = f"{span.sync_type}{_SM.separator}{span.entity_id}{_SM.separator}{span.marker}"
         positions[key] = adjusted_position_s
     return positions
 

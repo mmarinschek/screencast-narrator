@@ -2,13 +2,13 @@
 
 Turn raw screen recordings + narration text into polished narrated screencasts.
 
-**screencast-narrator** is a Python library and CLI that takes a Playwright (or any) screen recording together with timestamped narration text and produces a final video with:
+**screencast-narrator** is a Python library and CLI that takes a browser screen recording together with a narration timeline and produces a final video with:
 
 - Text-to-speech narration synced to on-screen actions
 - QR-code-based frame-accurate synchronization
 - Automatic freeze-frame insertion when narration overflows action duration
 - Dead-air gap detection and cutting
-- Interactive HTML timeline visualizations
+- Interactive HTML timeline visualization
 
 ## Installation
 
@@ -33,7 +33,6 @@ apt-get install ffmpeg libzbar0
 winget install GyanDev.FFmpeg
 # The pyzbar Python package ships its own libzbar DLL but needs the Visual C++ 2013 runtime:
 winget install Microsoft.VCRedist.2013.x64
-# Or download manually from https://aka.ms/highdpimfc2013x64enu
 ```
 
 ## Quick Start
@@ -43,36 +42,29 @@ winget install Microsoft.VCRedist.2013.x64
 ```python
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from screencast_narrator.timeline import ScreencastTimeline
+from screencast_narrator.storyboard import Storyboard
 from screencast_narrator.sync_frames import inject_sync_frame
 from screencast_narrator.merge import process
 
 output_dir = Path("my-screencast")
-output_dir.mkdir(exist_ok=True)
-
-timeline = ScreencastTimeline(output_dir, video_enabled=True)
+storyboard = Storyboard(output_dir)
 
 with sync_playwright() as p:
     browser = p.chromium.launch()
     context = browser.new_context(
         record_video_dir=str(output_dir / "videos"),
-        record_video_size={"width": 1920, "height": 1080},
+        record_video_size={"width": 1280, "height": 720},
     )
     page = context.new_page()
-    timeline.video_recording_started()
 
     # Narration bracket with sync frames
-    timeline.begin_narration_bracket()
-    inject_sync_frame(page, timeline.active_narration_id(), "START")
-
+    nid = storyboard.begin_narration("We open the example website.")
+    inject_sync_frame(page, nid, "START")
+    storyboard.add_screen_action("Navigate to example.com")
     page.goto("https://example.com")
-    timeline.add_action("Navigate to example.com")
+    inject_sync_frame(page, nid, "END")
+    storyboard.end_narration()
 
-    inject_sync_frame(page, timeline.active_narration_id(), "END")
-    timeline.add_narration("We open the example website.", start_ms=0, end_ms=2000)
-    timeline.end_narration_bracket()
-
-    timeline.video_recording_ended()
     context.close()
     browser.close()
 
@@ -87,14 +79,24 @@ screencast-narrator /path/to/recording-output/
 ```
 
 The directory must contain:
-- A `timeline.json` file (produced by `ScreencastTimeline`)
-- A video file (`.webm`) in a `videos/` subdirectory
+- A `storyboard.json` file (produced by `Storyboard` or hand-written)
+- A video file (`.webm`) in a `videos/` subdirectory with sync frames embedded
+
+## API
+
+The screencast-narrator API is JSON-based and language-agnostic. Any browser automation framework that can record video and execute JavaScript can produce the inputs.
+
+See **[docs/api.md](docs/api.md)** for:
+- Timeline JSON schema
+- Sync frame protocol specification
+- Sample code in **Python**, **Java**, and **TypeScript**
+- Pipeline processing details
 
 ## Architecture
 
 The pipeline has these stages:
 
-1. **Timeline recording** (`timeline.py`) — During your test/recording, track narrations, actions, highlights, and sync frames with timestamps.
+1. **Storyboard** (`storyboard.py`) — Declares narration text and screen actions. No timestamps — timing comes from sync frames.
 
 2. **Sync frame injection** (`sync_frames.py`) — Inject green QR-code overlay frames into the browser at narration bracket boundaries for frame-accurate sync.
 
@@ -102,24 +104,11 @@ The pipeline has these stages:
 
 4. **Sync detection** (`sync_detect.py`) — Extract frames from the recorded video, detect green sync frames, decode QR codes to map video frames to narration events.
 
-5. **Freeze frame calculation** (`freeze_frames.py`) — When narration audio is longer than the on-screen action, calculate where to insert freeze frames (paused video) so audio and video stay in sync. Avoids placing freezes during visual highlights.
+5. **Freeze frame calculation** (`freeze_frames.py`) — When narration audio is longer than the on-screen action, calculate where to insert freeze frames so audio and video stay in sync.
 
-6. **Video merge** (`merge.py`) — Orchestrate FFmpeg to build the final video: insert freeze frames, overlay audio, cut dead air gaps, concatenate segments.
+6. **Video merge** (`merge.py`) — Orchestrate FFmpeg to build the final video: strip sync frames, insert freeze frames, overlay audio, cut dead air gaps.
 
-7. **Timeline visualization** (`timeline_html.py`) — Generate interactive HTML timelines showing original events, adjusted (post-freeze) positions, and a combined three-column view.
-
-## Modules
-
-| Module | Purpose |
-|--------|---------|
-| `timeline.py` | Event recording during screen capture |
-| `sync_frames.py` | QR code overlay injection for frame-accurate sync |
-| `sync_detect.py` | Green frame detection and QR decoding from video |
-| `freeze_frames.py` | Freeze frame calculation algorithm |
-| `tts.py` | Pluggable TTS backend (Kokoro default) |
-| `ffmpeg.py` | FFmpeg subprocess helpers |
-| `merge.py` | Main merge pipeline and CLI entry point |
-| `timeline_html.py` | HTML timeline visualization generator |
+7. **Timeline visualization** (`timeline_html.py`) — Generate an interactive HTML timeline showing bracket positions, freeze frames, gap cuts, and audio durations.
 
 ## Custom TTS Backend
 

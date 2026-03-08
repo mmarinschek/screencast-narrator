@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "QR code payload schema for screencast-narrator sync frames. This defines the API contract between recording clients and the detection pipeline.",
+  "definitions": {
+    "syncType": {
+      "type": "string",
+      "enum": ["init", "nar", "act", "hlt"],
+      "description": "Sync frame type: init (initialization), nar (narration), act (screen action), hlt (highlight)"
+    },
+    "markerPosition": {
+      "type": "string",
+      "enum": ["start", "end"],
+      "description": "Marker position within a bracket"
+    },
+    "initPayload": {
+      "type": "object",
+      "required": ["t", "language"],
+      "properties": {
+        "t": { "const": "init" },
+        "language": { "type": "string" },
+        "debugOverlay": { "type": "boolean" },
+        "fontSize": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "narrationPayload": {
+      "type": "object",
+      "required": ["t", "id", "m"],
+      "properties": {
+        "t": { "const": "nar" },
+        "id": { "type": "integer", "minimum": 0 },
+        "m": { "$ref": "#/definitions/markerPosition" },
+        "tx": { "type": "string", "description": "Narration text (present on start markers)" },
+        "tr": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Translations keyed by language code"
+        }
+      },
+      "additionalProperties": false
+    },
+    "screenActionType": {
+      "type": "string",
+      "enum": ["highlight", "navigate", "input", "scroll", "wait", "animate", "title"],
+      "description": "Type of screen action (omitted when navigate, the default)"
+    },
+    "actionPayload": {
+      "type": "object",
+      "required": ["t", "id", "m"],
+      "properties": {
+        "t": { "const": "act" },
+        "id": { "type": "integer", "minimum": 0 },
+        "m": { "$ref": "#/definitions/markerPosition" },
+        "st": { "$ref": "#/definitions/screenActionType" },
+        "desc": { "type": "string", "description": "Action description" },
+        "tm": {
+          "type": "string",
+          "enum": ["elastic", "timed"],
+          "description": "Timing mode (omitted when casted)"
+        },
+        "dur": { "type": "integer", "minimum": 0, "description": "Duration in ms (required when timing is timed)" }
+      },
+      "additionalProperties": false
+    },
+    "highlightPayload": {
+      "type": "object",
+      "required": ["t", "id", "m"],
+      "properties": {
+        "t": { "const": "hlt" },
+        "id": { "type": "integer", "minimum": 0 },
+        "m": { "$ref": "#/definitions/markerPosition" }
+      },
+      "additionalProperties": false
+    },
+    "continuationWrapper": {
+      "type": "object",
+      "required": ["_c", "d"],
+      "properties": {
+        "_c": {
+          "type": "array",
+          "items": { "type": "integer" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[sequenceIndex, totalFrames]"
+        },
+        "d": { "type": "string", "description": "Chunk of the original payload" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/initPayload" },
+    { "$ref": "#/definitions/narrationPayload" },
+    { "$ref": "#/definitions/actionPayload" },
+    { "$ref": "#/definitions/highlightPayload" },
+    { "$ref": "#/definitions/continuationWrapper" }
+  ]
+}

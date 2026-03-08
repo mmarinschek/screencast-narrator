@@ -2,12 +2,15 @@
 
 from PIL import Image
 
+from screencast_narrator.shared_config import load_shared_config
 from screencast_narrator.sync_detect import (
     SyncMarker,
     group_consecutive_into_ranges,
     group_into_spans,
     is_green_frame,
 )
+
+_SM = load_shared_config().sync_markers
 
 
 def test_pure_green_frame_is_detected():
@@ -66,26 +69,26 @@ def test_group_consecutive_into_ranges_empty():
 
 def test_group_into_spans_groups_consecutive_same_marker():
     markers = [
-        SyncMarker(0, "START", 10),
-        SyncMarker(0, "START", 11),
-        SyncMarker(0, "START", 12),
-        SyncMarker(1, "START", 50),
-        SyncMarker(1, "START", 51),
+        SyncMarker(_SM.narration, 0, _SM.start, 10),
+        SyncMarker(_SM.narration, 0, _SM.start, 11),
+        SyncMarker(_SM.narration, 0, _SM.start, 12),
+        SyncMarker(_SM.narration, 1, _SM.start, 50),
+        SyncMarker(_SM.narration, 1, _SM.start, 51),
     ]
     spans = group_into_spans(markers)
     assert len(spans) == 2
-    assert spans[0].narration_id == 0
+    assert spans[0].entity_id == 0
     assert spans[0].first_frame == 10
     assert spans[0].last_frame == 12
-    assert spans[1].narration_id == 1
+    assert spans[1].entity_id == 1
     assert spans[1].first_frame == 50
     assert spans[1].last_frame == 51
 
 
 def test_group_into_spans_allows_one_frame_gap():
     markers = [
-        SyncMarker(0, "START", 10),
-        SyncMarker(0, "START", 12),
+        SyncMarker(_SM.narration, 0, _SM.start, 10),
+        SyncMarker(_SM.narration, 0, _SM.start, 12),
     ]
     spans = group_into_spans(markers)
     assert len(spans) == 1
@@ -95,8 +98,19 @@ def test_group_into_spans_allows_one_frame_gap():
 
 def test_group_into_spans_splits_on_different_marker():
     markers = [
-        SyncMarker(0, "START", 10),
-        SyncMarker(0, "END", 11),
+        SyncMarker(_SM.narration, 0, _SM.start, 10),
+        SyncMarker(_SM.narration, 0, _SM.end, 11),
     ]
     spans = group_into_spans(markers)
     assert len(spans) == 2
+
+
+def test_group_into_spans_separates_sync_types():
+    markers = [
+        SyncMarker(_SM.narration, 0, _SM.start, 10),
+        SyncMarker(_SM.action, 0, _SM.start, 11),
+    ]
+    spans = group_into_spans(markers)
+    assert len(spans) == 2
+    assert spans[0].sync_type == _SM.narration
+    assert spans[1].sync_type == _SM.action

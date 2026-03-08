@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Schema for storyboard.json — the recording manifest written by clients.",
+  "type": "object",
+  "required": ["language", "narrations"],
+  "properties": {
+    "language": {
+      "type": "string",
+      "description": "Primary language code (e.g. 'en', 'de')"
+    },
+    "narrations": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/narration" }
+    },
+    "options": {
+      "type": "object",
+      "properties": {
+        "debugOverlay": { "type": "boolean" },
+        "fontSize": { "type": "integer", "minimum": 1 },
+        "highlightStyle": { "$ref": "#/definitions/highlightStyle" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "screenActionType": {
+      "type": "string",
+      "enum": ["highlight", "navigate", "input", "scroll", "wait", "animate", "title"],
+      "description": "Type of screen action"
+    },
+    "screenActionTiming": {
+      "type": "string",
+      "enum": ["casted", "elastic", "timed"],
+      "description": "Timing mode (default: casted)"
+    },
+    "screenAction": {
+      "type": "object",
+      "required": ["type", "screenActionId"],
+      "properties": {
+        "type": { "$ref": "#/definitions/screenActionType" },
+        "screenActionId": { "type": "integer", "minimum": 0 },
+        "description": { "type": "string" },
+        "timing": { "$ref": "#/definitions/screenActionTiming" },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Required when timing is 'timed'"
+        }
+      },
+      "additionalProperties": false
+    },
+    "narration": {
+      "type": "object",
+      "required": ["narrationId"],
+      "properties": {
+        "narrationId": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "translations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Translations keyed by language code"
+        },
+        "screenActions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/screenAction" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "highlightStyle": {
+      "type": "object",
+      "description": "User-customizable highlight appearance. All fields are optional — unset fields inherit from the shared config defaults.",
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "CSS color for the highlight stroke (e.g. '#ff0000')"
+        },
+        "animationSpeedMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Duration of the draw animation in milliseconds"
+        },
+        "drawDurationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How long the highlight stays visible after drawing"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Opacity of the highlight stroke"
+        },
+        "padding": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Padding around the element bounding box"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
