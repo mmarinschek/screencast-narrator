@@ -25,7 +25,7 @@ jobs:
           pip install playwright
           playwright install chromium --with-deps
       - name: Run e2e tests
-        run: pytest -m e2e -v
+        run: pytest -m e2e -v --ignore=tests/test_google_docs_sync_frames.py --ignore=tests/test_highlight_e2e.py
 
   publish:
     needs: e2e

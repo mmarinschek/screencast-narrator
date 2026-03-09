@@ -46,7 +46,10 @@ _EXAMPLES_DIR = _PROJECT_ROOT / "examples"
 
 
 def _can_run_typescript() -> bool:
-    return shutil.which("npx") is not None and (_EXAMPLES_DIR / "record_wikipedia_search.ts").exists()
+    if shutil.which("npx") is None or not (_EXAMPLES_DIR / "record_wikipedia_search.ts").exists():
+        return False
+    result = subprocess.run(["npx", "--no-install", "tsx", "--version"], capture_output=True, timeout=10)
+    return result.returncode == 0
 
 
 def _can_run_java() -> bool:
