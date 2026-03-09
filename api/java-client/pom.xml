@@ -5,9 +5,26 @@
                              http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>screencast-narrator</groupId>
+    <groupId>io.github.mmarinschek.screencast-narrator</groupId>
     <artifactId>java-client</artifactId>
-    <version>0.1.2</version>
+    <version>0.3.1</version>
+
+    <name>Screencast Narrator Java Client</name>
+    <description>Java client for screencast-narrator: record narrated screencasts from browser automation</description>
+    <url>https://github.com/mmarinschek/screencast-narrator</url>
+
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <name>Martin Marinschek</name>
+        </developer>
+    </developers>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -43,6 +60,14 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/mmarinschek/screencast-narrator</url>
+        </repository>
+    </distributionManagement>
 
     <build>
         <plugins>
