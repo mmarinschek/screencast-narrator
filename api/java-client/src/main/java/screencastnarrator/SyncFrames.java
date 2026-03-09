@@ -33,11 +33,17 @@ public class SyncFrames {
     }
 
     public void injectInitFrame(Page page, String language, boolean debugOverlay, int fontSize) throws Exception {
+        injectInitFrame(page, language, debugOverlay, fontSize, null);
+    }
+
+    public void injectInitFrame(Page page, String language, boolean debugOverlay, int fontSize,
+                                Map<String, Map<String, String>> voices) throws Exception {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("t", syncMarkers.init().value());
         payload.put("language", language);
         if (debugOverlay) payload.put("debugOverlay", true);
         if (fontSize != 24) payload.put("fontSize", fontSize);
+        if (voices != null && !voices.isEmpty()) payload.put("voices", voices);
         injectQrOverlay(page, MAPPER.writeValueAsString(payload));
     }
 
@@ -50,12 +56,18 @@ public class SyncFrames {
     }
 
     public void injectSyncFrame(Page page, int narrationId, MarkerPosition marker, String text, Map<String, String> translations) throws Exception {
+        injectSyncFrame(page, narrationId, marker, text, translations, null);
+    }
+
+    public void injectSyncFrame(Page page, int narrationId, MarkerPosition marker, String text,
+                                Map<String, String> translations, String voice) throws Exception {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("t", syncMarkers.narration().value());
         payload.put("id", narrationId);
         payload.put("m", marker.value());
         if (text != null && !text.isEmpty()) payload.put("tx", text);
         if (translations != null && !translations.isEmpty()) payload.put("tr", translations);
+        if (voice != null && !voice.isEmpty()) payload.put("vc", voice);
         injectQrOverlay(page, MAPPER.writeValueAsString(payload));
     }
 

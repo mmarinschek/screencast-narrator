@@ -2,7 +2,7 @@ COMMON := api/common
 PY_GEN := api/python-client/src/screencast_narrator_client/generated
 TS_GEN := api/typescript-client/src/generated
 
-.PHONY: generate generate-python generate-typescript generate-java test
+.PHONY: generate generate-python generate-typescript generate-java test test-clients test-typescript test-java
 
 generate: generate-python generate-typescript
 	@echo "Done."
@@ -78,5 +78,13 @@ $(TS_GEN)/qr-payload-types.ts: $(COMMON)/qr-payload-schema.json
 generate-java:
 	mvn generate-sources -f api/java-client/pom.xml
 
-test:
+test: test-clients
 	DYLD_LIBRARY_PATH=/opt/homebrew/lib pytest
+
+test-clients: test-typescript test-java
+
+test-typescript:
+	cd api/typescript-client && npm test
+
+test-java:
+	cd api/java-client && mvn test -q

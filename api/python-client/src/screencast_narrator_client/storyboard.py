@@ -140,7 +140,7 @@ class Storyboard:
         self._pending_translations: dict[str, str] = dict(translations) if translations else {}
         self._pending_screen_actions = []
         if self._page is not None:
-            self._sync.inject_sync_frame(self._page, nid, self._sm.start, text, self._pending_translations or None)
+            self._sync.inject_sync_frame(self._page, nid, self._sm.start, text, self._pending_translations or None, voice)
         return nid
 
     def begin_screen_action(
@@ -269,7 +269,7 @@ class Storyboard:
     def _inject_init_frame(self) -> None:
         if self._page is None:
             return
-        self._sync.inject_init_frame(self._page, self._language, self._debug_overlay, self._font_size)
+        self._sync.inject_init_frame(self._page, self._language, self._debug_overlay, self._font_size, self._voices)
 
     def _flush(self) -> None:
         options: Options | None = None

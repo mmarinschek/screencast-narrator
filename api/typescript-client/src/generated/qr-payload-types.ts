@@ -29,6 +29,14 @@ export interface InitPayload {
   language: string;
   debugOverlay?: boolean;
   fontSize?: number;
+  /**
+   * Named voice aliases mapping to language-specific TTS voice identifiers
+   */
+  voices?: {
+    [k: string]: {
+      [k: string]: string;
+    };
+  };
 }
 export interface NarrationPayload {
   t: "nar";
@@ -44,6 +52,10 @@ export interface NarrationPayload {
   tr?: {
     [k: string]: string;
   };
+  /**
+   * Voice alias for this narration
+   */
+  vc?: string;
 }
 export interface ActionPayload {
   t: "act";

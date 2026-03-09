@@ -19,6 +19,7 @@ node_modules/
 package-lock.json
 package.json
 examples/target/
+api/java-client/target/
 *.traineddata
 *.webm
 *.mp4

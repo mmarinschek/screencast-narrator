@@ -48,12 +48,20 @@ class SyncFrameInjector:
         self._display_duration_ms = display_duration_ms if display_duration_ms is not None else self._sf.display_duration_ms
         self._post_removal_gap_ms = post_removal_gap_ms if post_removal_gap_ms is not None else self._sf.post_removal_gap_ms
 
-    def format_init_data(self, language: str, debug_overlay: bool = False, font_size: int = 24) -> str:
+    def format_init_data(
+        self,
+        language: str,
+        debug_overlay: bool = False,
+        font_size: int = 24,
+        voices: dict[str, dict[str, str]] | None = None,
+    ) -> str:
         payload: dict = {"t": self._sm.init.value, "language": language}
         if debug_overlay:
             payload["debugOverlay"] = True
         if font_size != 24:
             payload["fontSize"] = font_size
+        if voices:
+            payload["voices"] = voices
         return json.dumps(payload, separators=(",", ":"))
 
     def format_sync_data(
@@ -62,12 +70,15 @@ class SyncFrameInjector:
         marker: MarkerPosition,
         text: str = "",
         translations: dict[str, str] | None = None,
+        voice: str | None = None,
     ) -> str:
         payload: dict = {"t": self._sm.narration.value, "id": narration_id, "m": marker.value}
         if text:
             payload["tx"] = text
         if translations:
             payload["tr"] = translations
+        if voice:
+            payload["vc"] = voice
         return json.dumps(payload, separators=(",", ":"))
 
     def format_action_sync_data(
@@ -122,8 +133,15 @@ class SyncFrameInjector:
         b64 = base64.b64encode(buf.getvalue()).decode("ascii")
         return f"data:image/png;base64,{b64}"
 
-    def inject_init_frame(self, page, language: str, debug_overlay: bool = False, font_size: int = 24) -> None:
-        self._inject_qr_overlay(page, self.format_init_data(language, debug_overlay, font_size))
+    def inject_init_frame(
+        self,
+        page,
+        language: str,
+        debug_overlay: bool = False,
+        font_size: int = 24,
+        voices: dict[str, dict[str, str]] | None = None,
+    ) -> None:
+        self._inject_qr_overlay(page, self.format_init_data(language, debug_overlay, font_size, voices))
 
     def inject_sync_frame(
         self,
@@ -132,8 +150,9 @@ class SyncFrameInjector:
         marker: MarkerPosition,
         text: str = "",
         translations: dict[str, str] | None = None,
+        voice: str | None = None,
     ) -> None:
-        self._inject_qr_overlay(page, self.format_sync_data(narration_id, marker, text, translations))
+        self._inject_qr_overlay(page, self.format_sync_data(narration_id, marker, text, translations, voice))
 
     def inject_action_sync_frame(
         self,

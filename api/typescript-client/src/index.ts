@@ -144,17 +144,19 @@ function resolveDrawJs(cfg: HighlightConfig): string {
     .replace(/\{\{color\}\}/g, cfg.color);
 }
 
-function formatInitData(syncMarkers: SyncMarkersConfig, language: string, debugOverlay = false, fontSize = 24): string {
+export function formatInitData(syncMarkers: SyncMarkersConfig, language: string, debugOverlay = false, fontSize = 24, voices?: Record<string, Record<string, string>>): string {
   const payload: Record<string, unknown> = { t: syncMarkers.init, language };
   if (debugOverlay) payload.debugOverlay = true;
   if (fontSize !== 24) payload.fontSize = fontSize;
+  if (voices && Object.keys(voices).length > 0) payload.voices = voices;
   return JSON.stringify(payload);
 }
 
-function formatSyncData(syncMarkers: SyncMarkersConfig, narrationId: number, marker: string, text = "", translations?: Record<string, string>): string {
+export function formatSyncData(syncMarkers: SyncMarkersConfig, narrationId: number, marker: string, text = "", translations?: Record<string, string>, voice?: string): string {
   const payload: Record<string, unknown> = { t: syncMarkers.narration, id: narrationId, m: marker };
   if (text) payload.tx = text;
   if (translations && Object.keys(translations).length > 0) payload.tr = translations;
+  if (voice) payload.vc = voice;
   return JSON.stringify(payload);
 }
 
@@ -172,7 +174,7 @@ function formatHighlightSyncData(syncMarkers: SyncMarkersConfig, highlightId: nu
 
 const MAX_QR_DATA_LENGTH = 2000;
 
-function splitIntoContinuationFrames(data: string): string[] {
+export function splitIntoContinuationFrames(data: string): string[] {
   if (data.length <= MAX_QR_DATA_LENGTH) return [data];
   const overhead = 30;
   let chunkSize = MAX_QR_DATA_LENGTH - overhead;
@@ -268,7 +270,7 @@ export class Storyboard {
     if (!this.page) return;
     const debugOverlay = this._syncFrameStyle.debugOverlay ?? false;
     const fontSize = this._syncFrameStyle.fontSize ?? 24;
-    await this.injectQrOverlay(formatInitData(this.config.syncMarkers, this.language, debugOverlay, fontSize));
+    await this.injectQrOverlay(formatInitData(this.config.syncMarkers, this.language, debugOverlay, fontSize, this._voices));
   }
 
   async beginNarration(text?: string, translations?: Record<string, string>, voice?: string): Promise<number> {
@@ -286,7 +288,7 @@ export class Storyboard {
     this.pendingScreenActions = [];
     this.pendingHighlights = [];
     const tr = Object.keys(this.pendingTranslations).length > 0 ? this.pendingTranslations : undefined;
-    await this.injectSyncFrame(nid, this.config.syncMarkers.start, text ?? "", tr);
+    await this.injectSyncFrame(nid, this.config.syncMarkers.start, text ?? "", tr, voice);
     return nid;
   }
 
@@ -461,11 +463,12 @@ export class Storyboard {
     narrationId: number,
     marker: string,
     text: string = "",
-    translations?: Record<string, string>
+    translations?: Record<string, string>,
+    voice?: string
   ): Promise<void> {
     if (!this.page) return;
     await this.injectQrOverlay(
-      formatSyncData(this.config.syncMarkers, narrationId, marker, text, translations)
+      formatSyncData(this.config.syncMarkers, narrationId, marker, text, translations, voice)
     );
   }
 

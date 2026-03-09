@@ -89,27 +89,10 @@ def test_sync_frame_visible_over_google_docs(tmp_path: Path) -> None:
         assert not is_green_frame(before), "Page is green before injection — test is invalid"
 
         data_url = sync.generate_qr_data_url('{"t":"init"}')
-        inject_js = config.sync_frame.inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
+        inject_js = config.sync_frame.resolved_inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
         remove_js = config.sync_frame.remove_js
 
         page.evaluate(inject_js)
-
-        overlay_info = page.evaluate("""() => {
-            const el = document.getElementById('_e2e_sync');
-            if (!el) return {exists: false};
-            const rect = el.getBoundingClientRect();
-            const style = window.getComputedStyle(el);
-            return {
-                exists: true,
-                rect: {top: rect.top, left: rect.left, width: rect.width, height: rect.height},
-                zIndex: style.zIndex,
-                display: style.display,
-                visibility: style.visibility,
-                opacity: style.opacity,
-                parent: el.parentElement?.tagName,
-            };
-        }""")
-        print(f"\nOverlay info: {overlay_info}")
 
         during = _screenshot_as_pil(page)
         during.save(tmp_path / "during_overlay.png")
@@ -148,7 +131,7 @@ def test_overlay_survives_google_docs_dom_cleanup(tmp_path: Path) -> None:
         page.wait_for_timeout(5000)
 
         data_url = sync.generate_qr_data_url('{"t":"init"}')
-        inject_js = config.sync_frame.inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
+        inject_js = config.sync_frame.resolved_inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
 
         page.evaluate(inject_js)
 
@@ -190,7 +173,7 @@ def test_sync_frame_visible_over_google_docs_search_bar(tmp_path: Path) -> None:
         print(f"\nSearch dialog screenshot: {tmp_path / 'search_open.png'}")
 
         data_url = sync.generate_qr_data_url('{"t":"init"}')
-        inject_js = config.sync_frame.inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
+        inject_js = config.sync_frame.resolved_inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
         remove_js = config.sync_frame.remove_js
 
         page.evaluate(inject_js)
@@ -272,7 +255,7 @@ def test_sync_frame_visible_after_find_and_replace_closed(tmp_path: Path) -> Non
         assert not is_green_frame(after_escape), "Page is green after Escape — test is invalid"
 
         data_url = sync.generate_qr_data_url('{"t":"init"}')
-        inject_js = config.sync_frame.inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
+        inject_js = config.sync_frame.resolved_inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "test")
         remove_js = config.sync_frame.remove_js
 
         page.evaluate(inject_js)
@@ -342,7 +325,7 @@ def test_sync_frame_visible_after_scrolling_google_docs(tmp_path: Path) -> None:
         page.wait_for_timeout(5000)
 
         data_url = sync.generate_qr_data_url('{"t":"init"}')
-        inject_js = config.sync_frame.inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "")
+        inject_js = config.sync_frame.resolved_inject_js.replace("{{dataUrl}}", data_url).replace("{{label}}", "")
         remove_js = config.sync_frame.remove_js
         display_ms = config.sync_frame.display_duration_ms
         gap_ms = config.sync_frame.post_removal_gap_ms

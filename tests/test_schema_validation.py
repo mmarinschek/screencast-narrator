@@ -84,6 +84,25 @@ def test_qr_payload_highlight_validates():
         jsonschema.validate(payload, schema)
 
 
+def test_qr_payload_narration_with_voice_validates():
+    schema = _load_schema("qr-payload-schema.json")
+    payload = json.loads(_SYNC.format_sync_data(0, _SM.start, "Hello", voice="douglas"))
+    jsonschema.validate(payload, schema)
+
+
+def test_qr_payload_narration_with_translations_and_voice_validates():
+    schema = _load_schema("qr-payload-schema.json")
+    payload = json.loads(_SYNC.format_sync_data(0, _SM.start, "Hello", {"de": "Hallo"}, voice="harmony"))
+    jsonschema.validate(payload, schema)
+
+
+def test_qr_payload_init_with_voices_validates():
+    schema = _load_schema("qr-payload-schema.json")
+    voices = {"douglas": {"en": "am_adam"}, "natalie": {"en": "bf_alice", "de": "de_natasha"}}
+    payload = json.loads(_SYNC.format_init_data("en", voices=voices))
+    jsonschema.validate(payload, schema)
+
+
 def test_qr_payload_rejects_unknown_type():
     schema = _load_schema("qr-payload-schema.json")
     bad = {"t": "UNKNOWN", "id": 0, "m": "start"}

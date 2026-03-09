@@ -109,7 +109,7 @@ public class Storyboard {
 
     private void injectInitFrame() throws Exception {
         if (page == null) return;
-        syncFrames.injectInitFrame(page, language, isDebugOverlay(), getFontSize());
+        syncFrames.injectInitFrame(page, language, isDebugOverlay(), getFontSize(), voices);
     }
 
     public int beginNarration() throws Exception {
@@ -138,7 +138,7 @@ public class Storyboard {
         pendingScreenActions.clear();
         pendingHighlights.clear();
         Map<String, String> tr = pendingTranslations.isEmpty() ? null : new LinkedHashMap<>(pendingTranslations);
-        injectSyncFrame(nid, sm.start(), text != null ? text : "", tr);
+        injectSyncFrame(nid, sm.start(), text != null ? text : "", tr, voice);
         return nid;
     }
 
@@ -294,12 +294,13 @@ public class Storyboard {
     }
 
     private void injectSyncFrame(int narrationId, MarkerPosition marker) throws Exception {
-        injectSyncFrame(narrationId, marker, "", null);
+        injectSyncFrame(narrationId, marker, "", null, null);
     }
 
-    private void injectSyncFrame(int narrationId, MarkerPosition marker, String text, Map<String, String> translations) throws Exception {
+    private void injectSyncFrame(int narrationId, MarkerPosition marker, String text,
+                                 Map<String, String> translations, String voice) throws Exception {
         if (page == null) return;
-        syncFrames.injectSyncFrame(page, narrationId, marker, text, translations);
+        syncFrames.injectSyncFrame(page, narrationId, marker, text, translations, voice);
     }
 
     private void injectActionSyncFrame(int actionId, MarkerPosition marker) throws Exception {

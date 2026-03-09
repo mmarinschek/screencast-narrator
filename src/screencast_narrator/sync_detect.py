@@ -46,6 +46,7 @@ class SyncDetectionResult:
     total_frames: int
     narration_texts: dict[int, str] = field(default_factory=dict)
     narration_translations: dict[int, dict[str, str]] = field(default_factory=dict)
+    narration_voices: dict[int, str] = field(default_factory=dict)
     screen_actions: dict[int, ScreenAction] = field(default_factory=dict)
     init_data: dict = field(default_factory=dict)
 
@@ -139,6 +140,7 @@ def detect_sync_frames(video_path: Path, temp_dir: Path) -> SyncDetectionResult:
     green_frame_indices: set[int] = set()
     narration_texts: dict[int, str] = {}
     narration_translations: dict[int, dict[str, str]] = {}
+    narration_voices: dict[int, str] = {}
     screen_actions: dict[int, ScreenAction] = {}
     init_data: dict = {}
 
@@ -244,6 +246,8 @@ def detect_sync_frames(video_path: Path, temp_dir: Path) -> SyncDetectionResult:
                 narration_texts[entity_id] = payload["tx"]
             if "tr" in payload:
                 narration_translations[entity_id] = payload["tr"]
+            if "vc" in payload:
+                narration_voices[entity_id] = payload["vc"]
 
         if sync_type == _SM.action and marker_type == _SM.start:
             st_raw = payload.get("st")
@@ -291,7 +295,7 @@ def detect_sync_frames(video_path: Path, temp_dir: Path) -> SyncDetectionResult:
     spans = group_into_spans(markers)
     return SyncDetectionResult(
         spans, green_frame_indices, total_frames,
-        narration_texts, narration_translations, screen_actions, init_data,
+        narration_texts, narration_translations, narration_voices, screen_actions, init_data,
     )
 
 

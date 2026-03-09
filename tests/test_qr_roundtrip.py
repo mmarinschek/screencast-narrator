@@ -110,6 +110,32 @@ def test_format_sync_data_with_translations():
     assert parsed["tr"] == {"de": "Hallo", "fr": "Bonjour"}
 
 
+def test_format_sync_data_with_voice():
+    data = _SYNC.format_sync_data(0, _SM.start, "Hello", voice="douglas")
+    parsed = json.loads(data)
+    assert parsed["tx"] == "Hello"
+    assert parsed["vc"] == "douglas"
+
+
+def test_format_sync_data_without_voice_omits_vc():
+    data = _SYNC.format_sync_data(0, _SM.start, "Hello")
+    parsed = json.loads(data)
+    assert "vc" not in parsed
+
+
+def test_format_init_data_with_voices():
+    voices = {"natalie": {"en": "bf_alice"}, "douglas": {"en": "am_adam"}}
+    data = _SYNC.format_init_data("en", voices=voices)
+    parsed = json.loads(data)
+    assert parsed["voices"] == voices
+
+
+def test_format_init_data_without_voices_omits_key():
+    data = _SYNC.format_init_data("en")
+    parsed = json.loads(data)
+    assert "voices" not in parsed
+
+
 def test_format_action_sync_data_with_description():
     data = _SYNC.format_action_sync_data(0, _SM.start, description="Click button")
     parsed = json.loads(data)
@@ -168,15 +194,16 @@ def test_client_payload_roundtrip_through_detection():
     from screencast_narrator.sync_detect import SyncFrameSpan, SyncDetectionResult, _parse_qr_payload
     from screencast_narrator.merge import _build_storyboard_from_sync
 
+    voices = {"natalie": {"de": "bf_alice", "en": "bf_alice"}, "douglas": {"de": "am_adam", "en": "am_adam"}}
     payloads = [
-        _SYNC.format_init_data("de", debug_overlay=True, font_size=32),
-        _SYNC.format_sync_data(0, _SM.start, "First narration", {"en": "First narration EN"}),
+        _SYNC.format_init_data("de", debug_overlay=True, font_size=32, voices=voices),
+        _SYNC.format_sync_data(0, _SM.start, "First narration", {"en": "First narration EN"}, voice="natalie"),
         _SYNC.format_action_sync_data(0, _SM.start, description="Click button"),
         _SYNC.format_action_sync_data(0, _SM.end),
         _SYNC.format_highlight_sync_data(1, _SM.start),
         _SYNC.format_highlight_sync_data(1, _SM.end),
         _SYNC.format_sync_data(0, _SM.end),
-        _SYNC.format_sync_data(1, _SM.start, "Second narration"),
+        _SYNC.format_sync_data(1, _SM.start, "Second narration", voice="douglas"),
         _SYNC.format_action_sync_data(2, _SM.start, description="Animate", timing="timed", duration_ms=5000),
         _SYNC.format_action_sync_data(2, _SM.end),
         _SYNC.format_sync_data(1, _SM.end),
@@ -184,6 +211,7 @@ def test_client_payload_roundtrip_through_detection():
 
     narration_texts: dict[int, str] = {}
     narration_translations: dict[int, dict[str, str]] = {}
+    narration_voices: dict[int, str] = {}
     screen_actions: dict[int, ScreenAction] = {}
     init_data: dict = {}
     spans: list[SyncFrameSpan] = []
@@ -208,6 +236,8 @@ def test_client_payload_roundtrip_through_detection():
             narration_texts[entity_id] = parsed["tx"]
             if "tr" in parsed:
                 narration_translations[entity_id] = parsed["tr"]
+            if "vc" in parsed:
+                narration_voices[entity_id] = parsed["vc"]
 
         if sync_type == _SM.action and marker_type == _SM.start:
             st_raw = parsed.get("st")
@@ -235,6 +265,7 @@ def test_client_payload_roundtrip_through_detection():
         total_frames=frame_idx + 100,
         narration_texts=narration_texts,
         narration_translations=narration_translations,
+        narration_voices=narration_voices,
         screen_actions=screen_actions,
         init_data=init_data,
     )
@@ -242,11 +273,15 @@ def test_client_payload_roundtrip_through_detection():
     assert init_data["language"] == "de"
     assert init_data["debugOverlay"] is True
     assert init_data["fontSize"] == 32
+    assert init_data["voices"] == voices
 
     assert len(narration_texts) == 2
     assert narration_texts[0] == "First narration"
     assert narration_texts[1] == "Second narration"
     assert narration_translations[0] == {"en": "First narration EN"}
+
+    assert narration_voices[0] == "natalie"
+    assert narration_voices[1] == "douglas"
 
     assert screen_actions[0].description == "Click button"
     assert screen_actions[1].type == ScreenActionType.highlight
@@ -258,9 +293,13 @@ def test_client_payload_roundtrip_through_detection():
     assert storyboard.language == "de"
     assert len(storyboard.narrations) == 2
 
+    assert storyboard.options is not None
+    assert storyboard.options.voices == voices
+
     n0 = storyboard.narrations[0]
     assert n0.narration_id == 0
     assert n0.text == "First narration"
+    assert n0.voice == "natalie"
     assert n0.translations == {"en": "First narration EN"}
     actions0 = n0.screen_actions
     assert len(actions0) == 2
@@ -272,6 +311,7 @@ def test_client_payload_roundtrip_through_detection():
     n1 = storyboard.narrations[1]
     assert n1.narration_id == 1
     assert n1.text == "Second narration"
+    assert n1.voice == "douglas"
     assert n1.translations is None
     actions1 = n1.screen_actions
     assert len(actions1) == 1

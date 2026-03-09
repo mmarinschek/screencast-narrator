@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "screencast-narrator"
-version = "0.3.0"
+version = "0.3.1"
 description = "Turn raw screen recordings + narration text into polished narrated screencasts"
 license = "Apache-2.0"
 readme = "README.md"
@@ -56,7 +56,7 @@ Issues = "https://github.com/mmarinschek/screencast-narrator/issues"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "api/python-client/tests"]
 markers = [
     "e2e: end-to-end tests requiring Playwright and ffmpeg",
     "long: long-running tests (30+ min), skipped unless --run-long is passed",

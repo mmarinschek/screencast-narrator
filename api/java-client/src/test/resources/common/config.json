@@ -1,0 +1,38 @@
+{
+  "syncMarkers": {
+    "init": "init",
+    "narration": "nar",
+    "action": "act",
+    "highlight": "hlt",
+    "done": "done",
+    "separator": "|",
+    "start": "start",
+    "end": "end"
+  },
+  "syncFrame": {
+    "qrSize": 400,
+    "displayDurationMs": 160,
+    "doneDisplayDurationMs": 500,
+    "postRemovalGapMs": 80,
+    "backgroundColor": "#00FF00",
+    "injectJs": "js/sync-inject.js",
+    "removeJs": "js/sync-remove.js"
+  },
+  "highlight": {
+    "scrollWaitMs": 1000,
+    "drawWaitMs": 200,
+    "removeWaitMs": 200,
+    "color": "#fb7185",
+    "padding": 18,
+    "animationSpeedMs": 600,
+    "lineWidthMin": 2,
+    "lineWidthMax": 8,
+    "opacity": 0.65,
+    "segments": 200,
+    "coverage": 0.93,
+    "scrollJs": "js/highlight-scroll.js",
+    "scrollWaitJs": "js/highlight-scroll-wait.js",
+    "drawJs": "js/highlight-draw.js",
+    "removeJs": "js/highlight-remove.js"
+  }
+}

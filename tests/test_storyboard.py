@@ -549,10 +549,10 @@ class _TrackingSyncFrameInjector:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, str]] = []
 
-    def inject_init_frame(self, page, language: str, debug_overlay: bool = False, font_size: int = 24) -> None:
+    def inject_init_frame(self, page, language: str, debug_overlay: bool = False, font_size: int = 24, voices=None) -> None:
         self.calls.append(("init", 0, "init"))
 
-    def inject_sync_frame(self, page, narration_id: int, marker, text: str = "", translations=None) -> None:
+    def inject_sync_frame(self, page, narration_id: int, marker, text: str = "", translations=None, voice=None) -> None:
         self.calls.append(("narration", narration_id, marker.value))
 
     def inject_action_sync_frame(self, page, screen_action_id: int, marker, description=None,
@@ -596,3 +596,42 @@ def test_end_narration_injects_end_sync_frame_without_actions(tmp_path: Path) ->
 
     narration_end_calls = [c for c in tracker.calls if c[0] == "narration" and c[2] == "end"]
     assert len(narration_end_calls) == 1
+
+
+def test_voice_stored_on_narration(tmp_path: Path) -> None:
+    sb = Storyboard(tmp_path, voices={"douglas": {"en": "am_adam"}})
+    sb.begin_narration("Hello", voice="douglas")
+    sb.end_narration()
+
+    assert sb.narrations[0].voice == "douglas"
+
+
+def test_voice_none_when_not_specified(tmp_path: Path) -> None:
+    sb = Storyboard(tmp_path)
+    sb.begin_narration("Hello")
+    sb.end_narration()
+
+    assert sb.narrations[0].voice is None
+
+
+def test_voice_json_serialization(tmp_path: Path) -> None:
+    sb = Storyboard(tmp_path, voices={"douglas": {"en": "am_adam"}, "natalie": {"en": "bf_alice"}})
+    sb.begin_narration("Hello", voice="douglas")
+    sb.end_narration()
+    sb.begin_narration("World", voice="natalie")
+    sb.end_narration()
+
+    data = json.loads((tmp_path / "storyboard.json").read_text(encoding="utf-8"))
+    assert data["narrations"][0]["voice"] == "douglas"
+    assert data["narrations"][1]["voice"] == "natalie"
+    assert data["options"]["voices"] == {"douglas": {"en": "am_adam"}, "natalie": {"en": "bf_alice"}}
+
+
+def test_voice_omitted_from_json_when_not_set(tmp_path: Path) -> None:
+    sb = Storyboard(tmp_path)
+    sb.begin_narration("Hello")
+    sb.end_narration()
+
+    data = json.loads((tmp_path / "storyboard.json").read_text(encoding="utf-8"))
+    assert "voice" not in data["narrations"][0]
+    assert "options" not in data

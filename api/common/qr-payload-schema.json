@@ -19,7 +19,15 @@
         "t": { "const": "init" },
         "language": { "type": "string" },
         "debugOverlay": { "type": "boolean" },
-        "fontSize": { "type": "integer" }
+        "fontSize": { "type": "integer" },
+        "voices": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "description": "Named voice aliases mapping to language-specific TTS voice identifiers"
+        }
       },
       "additionalProperties": false
     },
@@ -35,7 +43,8 @@
           "type": "object",
           "additionalProperties": { "type": "string" },
           "description": "Translations keyed by language code"
-        }
+        },
+        "vc": { "type": "string", "description": "Voice alias for this narration" }
       },
       "additionalProperties": false
     },

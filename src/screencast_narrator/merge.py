@@ -32,6 +32,7 @@ from screencast_narrator.tts import KokoroTTS, TTSBackend
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
     Narration as StoryboardNarration,
+    Options as StoryboardOptions,
     ScreenAction,
     ScreenActionTiming,
     ScreenActionType,
@@ -135,15 +136,19 @@ def _build_storyboard_from_sync(sync_detection: SyncDetectionResult) -> Storyboa
                     screen_action_id=aid,
                 ))
 
+        voice = sync_detection.narration_voices.get(narration_id)
         narrations.append(StoryboardNarration(
             narration_id=narration_id,
             text=text,
+            voice=voice,
             translations=translations,
             screen_actions=screen_actions or None,
         ))
 
     language = sync_detection.init_data.get("language", "en")
-    return StoryboardModel(language=language, narrations=narrations)
+    voices_map = sync_detection.init_data.get("voices")
+    options = StoryboardOptions(voices=voices_map) if voices_map else None
+    return StoryboardModel(language=language, narrations=narrations, options=options)
 
 
 def _segment_name(index: int) -> str:
@@ -817,18 +822,21 @@ def _write_partial_diagnostics(
     timestamps = [n.start_ms for n in narrations]
     _write_timeline(storyboard, narrations, timestamps, [], [], target_dir)
 
-    storyboard_data = {
+    storyboard_data: dict = {
         "language": storyboard.language,
         "narrations": [
             {
                 "narrationId": n.narration_id,
                 "text": n.text,
+                **({"voice": n.voice} if n.voice else {}),
                 **({"translations": n.translations} if n.translations else {}),
                 **({"screenActions": [_screen_action_to_json(a) for a in n.screen_actions]} if n.screen_actions else {}),
             }
             for n in storyboard.narrations
         ],
     }
+    if storyboard.options and storyboard.options.voices:
+        storyboard_data["options"] = {"voices": storyboard.options.voices}
     (target_dir / "storyboard.json").write_text(
         json.dumps(storyboard_data, indent=2), encoding="utf-8"
     )
