@@ -7,7 +7,7 @@
 
     <groupId>com.github.mmarinschek.screencast-narrator</groupId>
     <artifactId>java-client</artifactId>
-    <version>0.3.2</version>
+    <version>0.3.3</version>
 
     <name>Screencast Narrator Java Client</name>
     <description>Java client for screencast-narrator: record narrated screencasts from browser automation</description>
