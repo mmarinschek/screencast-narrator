@@ -59,7 +59,6 @@ public class CdpVideoRecorder {
             if (!recording.get()) return;
             try {
                 String data = event.getAsJsonObject().get("data").getAsString();
-                int sessionId = event.getAsJsonObject().get("sessionId").getAsInt();
 
                 byte[] frameBytes = Base64.getDecoder().decode(data);
                 synchronized (ffmpegStdin) {
@@ -67,10 +66,10 @@ public class CdpVideoRecorder {
                     ffmpegStdin.flush();
                 }
                 frameCount++;
-
-                JsonObject ackParams = new JsonObject();
-                ackParams.addProperty("sessionId", sessionId);
-                cdpSession.send("Page.screencastFrameAck", ackParams);
+                // Page.screencastFrameAck intentionally omitted — cdpSession.send()
+                // is synchronous and re-enters the message loop, which can deliver
+                // the next frame event recursively, causing StackOverflowError.
+                // Chrome throttles frame delivery without ack, which is fine here.
             } catch (Exception e) {
                 if (recording.get()) {
                     LOG.warning("Error processing screencast frame: " + e.getMessage());
