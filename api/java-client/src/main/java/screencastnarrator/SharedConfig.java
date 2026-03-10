@@ -78,6 +78,7 @@ public class SharedConfig {
                 "-i", "pipe:0",
                 "-y", "-an",
                 "-r", String.valueOf(rec.getFps()),
+                "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                 "-c:v", rec.getCodec().value(),
                 "-preset", rec.getPreset().value(),
                 "-crf", String.valueOf(rec.getCrf()),
