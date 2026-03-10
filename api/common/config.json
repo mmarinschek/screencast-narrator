@@ -1,22 +1,14 @@
 {
-  "syncMarkers": {
-    "init": "init",
-    "narration": "nar",
-    "action": "act",
-    "highlight": "hlt",
-    "done": "done",
-    "separator": "|",
-    "start": "start",
-    "end": "end"
-  },
-  "syncFrame": {
-    "qrSize": 400,
-    "displayDurationMs": 160,
-    "doneDisplayDurationMs": 500,
-    "postRemovalGapMs": 80,
-    "backgroundColor": "#00FF00",
-    "injectJs": "js/sync-inject.js",
-    "removeJs": "js/sync-remove.js"
+  "recording": {
+    "fps": 25,
+    "jpegQuality": 80,
+    "minFrames": 3,
+    "minFrameWaitMs": 40,
+    "stopSettleMs": 100,
+    "codec": "libx264",
+    "preset": "fast",
+    "crf": 18,
+    "pixelFormat": "yuv420p"
   },
   "highlight": {
     "scrollWaitMs": 1000,

@@ -9,10 +9,8 @@ from pathlib import Path
 BANNED_APIS = [
     {
         "pattern": re.compile(r"wait_for_timeout"),
-        "message": "Use sync frames or page.wait_for_selector instead of wait_for_timeout",
-        "exclude": [
-            "src/screencast_narrator/sync_frames.py",  # internal sync frame implementation
-        ],
+        "message": "Use page.wait_for_selector instead of wait_for_timeout",
+        "exclude": [],
     },
 ]
 

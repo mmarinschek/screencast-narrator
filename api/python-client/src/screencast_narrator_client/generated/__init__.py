@@ -1,5 +1,10 @@
 """Generated types from JSON schemas — do not edit manually."""
 
+from screencast_narrator_client.generated.config_types import (
+    HighlightConfig as HighlightConfigGenerated,
+    Model as ConfigModel,
+    RecordingConfig,
+)
 from screencast_narrator_client.generated.storyboard_types import (
     HighlightStyle,
     Model as StoryboardModel,
@@ -8,22 +13,17 @@ from screencast_narrator_client.generated.storyboard_types import (
     ScreenAction,
     ScreenActionTiming,
     ScreenActionType,
-    SyncFrameStyle,
-)
-from screencast_narrator_client.generated.qr_payload_types import (
-    MarkerPosition,
-    SyncType,
 )
 
 __all__ = [
+    "ConfigModel",
+    "HighlightConfigGenerated",
     "HighlightStyle",
-    "MarkerPosition",
     "Narration",
     "Options",
+    "RecordingConfig",
     "ScreenAction",
     "ScreenActionTiming",
     "ScreenActionType",
     "StoryboardModel",
-    "SyncFrameStyle",
-    "SyncType",
 ]

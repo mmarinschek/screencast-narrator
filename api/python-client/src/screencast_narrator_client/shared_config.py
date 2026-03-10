@@ -3,102 +3,98 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from pathlib import Path
 
-from screencast_narrator_client.generated.qr_payload_types import MarkerPosition, SyncType
+from screencast_narrator_client.generated.config_types import (
+    HighlightConfig,
+    Model as ConfigModel,
+    RecordingConfig,
+)
+from screencast_narrator_client.generated.storyboard_types import HighlightStyle
 
 
-@dataclass(frozen=True)
-class SyncMarkers:
-    init: SyncType
-    narration: SyncType
-    action: SyncType
-    highlight: SyncType
-    done: SyncType
-    separator: str
-    start: MarkerPosition
-    end: MarkerPosition
-
-    def key(self, sync_type: SyncType, entity_id: int, marker: MarkerPosition) -> str:
-        return f"{sync_type.value}{self.separator}{entity_id}{self.separator}{marker.value}"
-
-    def narration_start(self, narration_id: int) -> str:
-        return self.key(self.narration, narration_id, self.start)
-
-    def narration_end(self, narration_id: int) -> str:
-        return self.key(self.narration, narration_id, self.end)
-
-    def action_start(self, action_id: int) -> str:
-        return self.key(self.action, action_id, self.start)
-
-    def action_end(self, action_id: int) -> str:
-        return self.key(self.action, action_id, self.end)
-
-    def highlight_start(self, highlight_id: int) -> str:
-        return self.key(self.highlight, highlight_id, self.start)
-
-    def highlight_end(self, highlight_id: int) -> str:
-        return self.key(self.highlight, highlight_id, self.end)
+class SharedConfig:
+    def __init__(self, model: ConfigModel, config_dir: Path) -> None:
+        self._model = model
+        self._config_dir = config_dir
 
     @property
-    def all_types(self) -> tuple[SyncType, ...]:
-        return (self.init, self.narration, self.action, self.highlight, self.done)
-
-
-@dataclass(frozen=True)
-class SyncFrameConfig:
-    qr_size: int
-    display_duration_ms: int
-    done_display_duration_ms: int
-    post_removal_gap_ms: int
-    background_color: str
-    inject_js: str
-    remove_js: str
+    def recording(self) -> RecordingConfig:
+        return self._model.recording
 
     @property
-    def resolved_inject_js(self) -> str:
-        return self.inject_js.replace("{{backgroundColor}}", self.background_color)
+    def highlight(self) -> HighlightConfig:
+        return self._model.highlight
 
+    @property
+    def resolved_scroll_js(self) -> str:
+        return self._resolve_js(self.highlight.scroll_js)
 
-@dataclass(frozen=True)
-class HighlightConfig:
-    scroll_wait_ms: int
-    draw_wait_ms: int
-    remove_wait_ms: int
-    color: str
-    padding: int
-    animation_speed_ms: int
-    line_width_min: int
-    line_width_max: int
-    opacity: float
-    segments: int
-    coverage: float
-    scroll_js: str
-    scroll_wait_js: str
-    draw_js: str
-    remove_js: str
+    @property
+    def resolved_scroll_wait_js(self) -> str:
+        return self._resolve_js(self.highlight.scroll_wait_js)
 
     @property
     def resolved_draw_js(self) -> str:
-        return (
-            self.draw_js
-            .replace("{{padding}}", str(self.padding))
-            .replace("{{lineWidthMin}}", str(self.line_width_min))
-            .replace("{{lineWidthMax}}", str(self.line_width_max))
-            .replace("{{opacity}}", str(self.opacity))
-            .replace("{{segments}}", str(self.segments))
-            .replace("{{coverage}}", str(self.coverage))
-            .replace("{{animationSpeedMs}}", str(self.animation_speed_ms))
-            .replace("{{color}}", self.color)
+        raw = self._resolve_js(self.highlight.draw_js)
+        replacements = self.highlight.model_dump(by_alias=True)
+        for key, value in replacements.items():
+            raw = raw.replace("{{" + key + "}}", str(value))
+        return raw
+
+    @property
+    def resolved_remove_js(self) -> str:
+        return self._resolve_js(self.highlight.remove_js)
+
+    def ffmpeg_args(self, output_file: str) -> list[str]:
+        rec = self.recording
+        return [
+            "ffmpeg",
+            "-loglevel", "error",
+            "-f", "image2pipe",
+            "-avioflags", "direct",
+            "-fpsprobesize", "0",
+            "-probesize", "32",
+            "-analyzeduration", "0",
+            "-c:v", "mjpeg",
+            "-i", "pipe:0",
+            "-y", "-an",
+            "-r", str(rec.fps),
+            "-c:v", str(rec.codec),
+            "-preset", str(rec.preset),
+            "-crf", str(rec.crf),
+            "-pix_fmt", str(rec.pixel_format),
+            "-threads", "1",
+            output_file,
+        ]
+
+    def with_highlight_overrides(self, style: HighlightStyle) -> SharedConfig:
+        hl = self.highlight
+        overridden = HighlightConfig(
+            scroll_wait_ms=style.scroll_wait_ms if style.scroll_wait_ms is not None else hl.scroll_wait_ms,
+            draw_wait_ms=style.draw_duration_ms if style.draw_duration_ms is not None else hl.draw_wait_ms,
+            remove_wait_ms=style.remove_wait_ms if style.remove_wait_ms is not None else hl.remove_wait_ms,
+            color=style.color if style.color is not None else hl.color,
+            padding=style.padding if style.padding is not None else hl.padding,
+            animation_speed_ms=style.animation_speed_ms if style.animation_speed_ms is not None else hl.animation_speed_ms,
+            line_width_min=style.line_width_min if style.line_width_min is not None else hl.line_width_min,
+            line_width_max=style.line_width_max if style.line_width_max is not None else hl.line_width_max,
+            opacity=style.opacity if style.opacity is not None else hl.opacity,
+            segments=style.segments if style.segments is not None else hl.segments,
+            coverage=style.coverage if style.coverage is not None else hl.coverage,
+            scroll_js=hl.scroll_js,
+            scroll_wait_js=hl.scroll_wait_js,
+            draw_js=hl.draw_js,
+            remove_js=hl.remove_js,
         )
+        model = ConfigModel(recording=self.recording, highlight=overridden)
+        return SharedConfig(model, self._config_dir)
 
-
-@dataclass(frozen=True)
-class SharedConfig:
-    sync_markers: SyncMarkers
-    sync_frame: SyncFrameConfig
-    highlight: HighlightConfig
+    def _resolve_js(self, value: str) -> str:
+        js_path = self._config_dir / value
+        if js_path.exists():
+            return js_path.read_text(encoding="utf-8").strip()
+        return value
 
 
 def _find_config_path() -> Path:
@@ -111,57 +107,9 @@ def _find_config_path() -> Path:
     )
 
 
-def _resolve_js(config_dir: Path, value: str) -> str:
-    js_path = config_dir / value
-    if js_path.exists():
-        return js_path.read_text(encoding="utf-8").strip()
-    return value
-
-
 def load_shared_config() -> SharedConfig:
     config_path = _find_config_path()
     config_dir = config_path.parent
     data = json.loads(config_path.read_text(encoding="utf-8"))
-
-    sm = data["syncMarkers"]
-    sf = data["syncFrame"]
-    hl = data["highlight"]
-
-    return SharedConfig(
-        sync_markers=SyncMarkers(
-            init=SyncType(sm["init"]),
-            narration=SyncType(sm["narration"]),
-            action=SyncType(sm["action"]),
-            highlight=SyncType(sm["highlight"]),
-            done=SyncType(sm["done"]),
-            separator=sm["separator"],
-            start=MarkerPosition(sm["start"]),
-            end=MarkerPosition(sm["end"]),
-        ),
-        sync_frame=SyncFrameConfig(
-            qr_size=sf["qrSize"],
-            display_duration_ms=sf["displayDurationMs"],
-            done_display_duration_ms=sf["doneDisplayDurationMs"],
-            post_removal_gap_ms=sf["postRemovalGapMs"],
-            background_color=sf["backgroundColor"],
-            inject_js=_resolve_js(config_dir, sf["injectJs"]),
-            remove_js=_resolve_js(config_dir, sf["removeJs"]),
-        ),
-        highlight=HighlightConfig(
-            scroll_wait_ms=hl["scrollWaitMs"],
-            draw_wait_ms=hl["drawWaitMs"],
-            remove_wait_ms=hl["removeWaitMs"],
-            color=hl["color"],
-            padding=hl["padding"],
-            animation_speed_ms=hl["animationSpeedMs"],
-            line_width_min=hl["lineWidthMin"],
-            line_width_max=hl["lineWidthMax"],
-            opacity=hl["opacity"],
-            segments=hl["segments"],
-            coverage=hl["coverage"],
-            scroll_js=_resolve_js(config_dir, hl["scrollJs"]),
-            scroll_wait_js=_resolve_js(config_dir, hl["scrollWaitJs"]),
-            draw_js=_resolve_js(config_dir, hl["drawJs"]),
-            remove_js=_resolve_js(config_dir, hl["removeJs"]),
-        ),
-    )
+    model = ConfigModel.model_validate(data)
+    return SharedConfig(model, config_dir)

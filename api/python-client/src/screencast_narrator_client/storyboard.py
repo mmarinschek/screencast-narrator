@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,10 +15,10 @@ from screencast_narrator_client.generated.storyboard_types import (
     ScreenAction,
     ScreenActionTiming,
     ScreenActionType,
-    SyncFrameStyle,
 )
-from screencast_narrator_client.shared_config import HighlightConfig, SharedConfig, load_shared_config
-from screencast_narrator_client.sync_frames import SyncFrameInjector
+from screencast_narrator_client.shared_config import SharedConfig, load_shared_config
+
+log = logging.getLogger(__name__)
 
 
 def _merge_highlight_styles(base: HighlightStyle, override: HighlightStyle) -> HighlightStyle:
@@ -35,35 +37,6 @@ def _merge_highlight_styles(base: HighlightStyle, override: HighlightStyle) -> H
     )
 
 
-def _apply_highlight_style(style: HighlightStyle, config: HighlightConfig) -> HighlightConfig:
-    return HighlightConfig(
-        scroll_wait_ms=style.scroll_wait_ms if style.scroll_wait_ms is not None else config.scroll_wait_ms,
-        draw_wait_ms=style.draw_duration_ms if style.draw_duration_ms is not None else config.draw_wait_ms,
-        remove_wait_ms=style.remove_wait_ms if style.remove_wait_ms is not None else config.remove_wait_ms,
-        color=style.color if style.color is not None else config.color,
-        padding=style.padding if style.padding is not None else config.padding,
-        animation_speed_ms=style.animation_speed_ms if style.animation_speed_ms is not None else config.animation_speed_ms,
-        line_width_min=style.line_width_min if style.line_width_min is not None else config.line_width_min,
-        line_width_max=style.line_width_max if style.line_width_max is not None else config.line_width_max,
-        opacity=style.opacity if style.opacity is not None else config.opacity,
-        segments=style.segments if style.segments is not None else config.segments,
-        coverage=style.coverage if style.coverage is not None else config.coverage,
-        scroll_js=config.scroll_js,
-        scroll_wait_js=config.scroll_wait_js,
-        draw_js=config.draw_js,
-        remove_js=config.remove_js,
-    )
-
-
-def _merge_sync_frame_styles(base: SyncFrameStyle, override: SyncFrameStyle) -> SyncFrameStyle:
-    return SyncFrameStyle(
-        display_duration_ms=override.display_duration_ms if override.display_duration_ms is not None else base.display_duration_ms,
-        post_removal_gap_ms=override.post_removal_gap_ms if override.post_removal_gap_ms is not None else base.post_removal_gap_ms,
-        debug_overlay=override.debug_overlay if override.debug_overlay is not None else base.debug_overlay,
-        font_size=override.font_size if override.font_size is not None else base.font_size,
-    )
-
-
 class Storyboard:
     def __init__(
         self,
@@ -71,21 +44,19 @@ class Storyboard:
         page=None,
         language: str = "en",
         highlight_style: HighlightStyle | None = None,
-        sync_frame_style: SyncFrameStyle | None = None,
+        debug_overlay: bool = False,
+        font_size: int = 24,
         voices: dict[str, dict[str, str]] | None = None,
+        video_width: int = 1280,
+        video_height: int = 720,
     ) -> None:
         self._output_dir = output_dir
         self._page = page
         self._language = language
         self._config: SharedConfig = load_shared_config()
-        self._sm = self._config.sync_markers
         self._highlight_style = highlight_style or HighlightStyle()
-        self._sync_frame_style = sync_frame_style or SyncFrameStyle()
-        self._sync = SyncFrameInjector(
-            self._config,
-            display_duration_ms=self._sync_frame_style.display_duration_ms,
-            post_removal_gap_ms=self._sync_frame_style.post_removal_gap_ms,
-        )
+        self._debug_overlay_flag = debug_overlay
+        self._font_size_val = font_size
         self._narrations: list[Narration] = []
         self._narration_id_counter = 0
         self._screen_action_id_counter = 0
@@ -96,16 +67,19 @@ class Storyboard:
         self._pending_action_id: int | None = None
         self._pending_voice: str | None = None
         self._voices = voices
+        self._video_width = video_width
+        self._video_height = video_height
+        self._current_recorder = None
+        self._narration_start_ns: int = 0
         output_dir.mkdir(parents=True, exist_ok=True)
-        self._inject_init_frame()
 
     @property
-    def _debug_overlay(self) -> bool:
-        return self._sync_frame_style.debug_overlay or False
+    def debug_overlay(self) -> bool:
+        return self._debug_overlay_flag
 
     @property
-    def _font_size(self) -> int:
-        return self._sync_frame_style.font_size or 24
+    def font_size(self) -> int:
+        return self._font_size_val
 
     @property
     def highlight_style(self) -> HighlightStyle:
@@ -115,18 +89,26 @@ class Storyboard:
         self._highlight_style = _merge_highlight_styles(self._highlight_style, style)
         return self
 
-    @property
-    def sync_frame_style(self) -> SyncFrameStyle:
-        return self._sync_frame_style
+    def _elapsed_ms(self) -> int:
+        return (time.monotonic_ns() - self._narration_start_ns) // 1_000_000
 
-    def with_sync_frame_style(self, style: SyncFrameStyle) -> Storyboard:
-        self._sync_frame_style = _merge_sync_frame_styles(self._sync_frame_style, style)
-        self._sync = SyncFrameInjector(
-            self._config,
-            display_duration_ms=self._sync_frame_style.display_duration_ms,
-            post_removal_gap_ms=self._sync_frame_style.post_removal_gap_ms,
-        )
-        return self
+    def _start_recording(self, narration_id: int) -> None:
+        from screencast_narrator_client.cdp_video_recorder import CdpVideoRecorder
+
+        video_dir = self._output_dir / "videos"
+        video_file = video_dir / f"narration-{narration_id:03d}.mp4"
+        self._current_recorder = CdpVideoRecorder(self._page, video_file, self._video_width, self._video_height, self._config)
+        self._current_recorder.start()
+        self._narration_start_ns = time.monotonic_ns()
+
+    def _stop_recording(self) -> None:
+        if self._current_recorder is None:
+            return
+        self._current_recorder.stop()
+        log.info("Narration %d video saved: %s (%d frames)",
+                 self._pending_narration_id, self._current_recorder.output_file,
+                 self._current_recorder.frame_count)
+        self._current_recorder = None
 
     def begin_narration(self, text: str | None = None, translations: dict[str, str] | None = None, voice: str | None = None) -> int:
         if self._narration_open:
@@ -140,7 +122,7 @@ class Storyboard:
         self._pending_translations: dict[str, str] = dict(translations) if translations else {}
         self._pending_screen_actions = []
         if self._page is not None:
-            self._sync.inject_sync_frame(self._page, nid, self._sm.start, text, self._pending_translations or None, voice)
+            self._start_recording(nid)
         return nid
 
     def begin_screen_action(
@@ -167,11 +149,6 @@ class Storyboard:
             duration_ms=duration_ms,
         ))
         self._pending_action_id = said
-        timing_str = timing.value if timing != ScreenActionTiming.casted else None
-        if self._page is not None:
-            self._sync.inject_action_sync_frame(
-                self._page, said, self._sm.start, description, type.value, timing_str, duration_ms
-            )
         return said
 
     def highlight(self, locator) -> None:
@@ -180,18 +157,15 @@ class Storyboard:
         if not self._narration_open:
             raise RuntimeError("Cannot highlight outside of a narration bracket")
 
-        highlight_config = _apply_highlight_style(self._highlight_style, self._config.highlight)
+        hl_config = self._config.with_highlight_overrides(self._highlight_style)
 
         said = self._screen_action_id_counter
         self._screen_action_id_counter += 1
 
-        self._sync.inject_highlight_sync_frame(self._page, said, self._sm.start)
-
         from screencast_narrator_client.highlight import highlight as _highlight
 
-        _highlight(self._page, locator, highlight_config)
+        _highlight(self._page, locator, hl_config)
 
-        self._sync.inject_highlight_sync_frame(self._page, said, self._sm.end)
         self._pending_screen_actions.append(ScreenAction(
             type=ScreenActionType.highlight,
             screen_action_id=said,
@@ -200,8 +174,6 @@ class Storyboard:
     def end_screen_action(self) -> None:
         if self._pending_action_id is None:
             raise RuntimeError("Cannot end screen action: no screen action is open")
-        if self._page is not None:
-            self._sync.inject_action_sync_frame(self._page, self._pending_action_id, self._sm.end)
         self._pending_action_id = None
 
     def end_narration(self) -> None:
@@ -209,14 +181,14 @@ class Storyboard:
             raise RuntimeError("Cannot end narration: no narration bracket is open")
         if self._pending_action_id is not None:
             raise RuntimeError("Cannot end narration while a screen action is still open")
-        if self._page is not None:
-            self._sync.inject_sync_frame(self._page, self._pending_narration_id, self._sm.end)
+        self._stop_recording()
         self._narrations.append(Narration(
             narration_id=self._pending_narration_id,
             text=self._pending_text,
             voice=self._pending_voice,
             screen_actions=list(self._pending_screen_actions) or None,
             translations=dict(self._pending_translations) or None,
+            video_file=f"videos/narration-{self._pending_narration_id:03d}.mp4",
         ))
         self._narration_open = False
         self._pending_text = None
@@ -259,24 +231,22 @@ class Storyboard:
     def done(self) -> None:
         if self._narration_open:
             raise RuntimeError("Cannot finalize: a narration bracket is still open")
-        if self._page is not None:
-            self._sync.inject_done_frame(self._page)
+        self._flush()
 
     @property
     def narrations(self) -> list[Narration]:
         return list(self._narrations)
 
-    def _inject_init_frame(self) -> None:
-        if self._page is None:
-            return
-        self._sync.inject_init_frame(self._page, self._language, self._debug_overlay, self._font_size, self._voices)
-
     def _flush(self) -> None:
         options: Options | None = None
         hl = self._highlight_style if self._highlight_style != HighlightStyle() else None
-        sf = self._sync_frame_style if self._sync_frame_style != SyncFrameStyle() else None
-        if hl or sf or self._voices:
-            options = Options(highlight_style=hl, sync_frame_style=sf, voices=self._voices)
+        if hl or self._voices or self._debug_overlay_flag or self._font_size_val != 24:
+            options = Options(
+                highlight_style=hl,
+                voices=self._voices,
+                debug_overlay=True if self._debug_overlay_flag else None,
+                font_size=self._font_size_val if self._font_size_val != 24 else None,
+            )
         model = StoryboardModel(
             language=self._language,
             narrations=list(self._narrations),

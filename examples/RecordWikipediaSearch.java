@@ -13,9 +13,7 @@ import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.WaitForSelectorState;
 import com.microsoft.playwright.options.WaitUntilState;
 import screencastnarrator.Storyboard;
-import screencastnarrator.generated.SyncFrameStyle;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -28,21 +26,15 @@ public class RecordWikipediaSearch {
         }
 
         Path outputDir = Path.of(args[0]);
-        Path videosDir = outputDir.resolve("videos");
-        Files.createDirectories(videosDir);
 
         try (Playwright pw = Playwright.create()) {
             Browser browser = pw.chromium().launch(
                 new BrowserType.LaunchOptions().setHeadless(true));
             BrowserContext context = browser.newContext(new Browser.NewContextOptions()
-                .setViewportSize(1280, 720)
-                .setRecordVideoDir(videosDir)
-                .setRecordVideoSize(1280, 720));
+                .setViewportSize(1280, 720));
             Page page = context.newPage();
 
-            SyncFrameStyle syncFrameStyle = new SyncFrameStyle();
-            syncFrameStyle.setDebugOverlay(true);
-            Storyboard storyboard = new Storyboard(outputDir, page, "en", null, syncFrameStyle);
+            Storyboard storyboard = new Storyboard(outputDir, page, "en", null, true);
 
             // --- Step 1: Navigate to Wikipedia ---
             storyboard.narrate(

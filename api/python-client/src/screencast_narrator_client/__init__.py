@@ -2,18 +2,14 @@
 
 from screencast_narrator_client.generated import (
     HighlightStyle,
-    MarkerPosition,
     ScreenActionTiming,
     ScreenActionType,
-    SyncFrameStyle,
-    SyncType,
 )
 from screencast_narrator_client.highlight import draw_highlight, highlight, remove_highlight
 from screencast_narrator_client.shared_config import (
     HighlightConfig,
+    RecordingConfig,
     SharedConfig,
-    SyncFrameConfig,
-    SyncMarkers,
     load_shared_config,
 )
 from screencast_narrator_client.storyboard import (
@@ -21,32 +17,18 @@ from screencast_narrator_client.storyboard import (
     ScreenAction,
     Storyboard,
 )
-from screencast_narrator_client.sync_frames import (
-    MAX_QR_DATA_LENGTH,
-    SyncFrameInjector,
-    reassemble_continuation_frames,
-    split_into_continuation_frames,
-)
 
 __all__ = [
     "HighlightConfig",
     "HighlightStyle",
-    "MarkerPosition",
+    "RecordingConfig",
     "SharedConfig",
-    "SyncFrameConfig",
-    "SyncFrameStyle",
-    "SyncMarkers",
-    "SyncType",
     "load_shared_config",
     "Narration",
     "ScreenAction",
     "ScreenActionTiming",
     "ScreenActionType",
     "Storyboard",
-    "MAX_QR_DATA_LENGTH",
-    "SyncFrameInjector",
-    "reassemble_continuation_frames",
-    "split_into_continuation_frames",
     "draw_highlight",
     "highlight",
     "remove_highlight",

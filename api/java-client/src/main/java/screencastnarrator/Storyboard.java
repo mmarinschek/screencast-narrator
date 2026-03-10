@@ -11,11 +11,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 import screencastnarrator.generated.HighlightStyle;
-import screencastnarrator.generated.SyncFrameStyle;
+import screencastnarrator.generated.ScreenAction.ScreenActionTiming;
 
 public class Storyboard {
+
+    private static final Logger LOG = Logger.getLogger(Storyboard.class.getName());
 
     @FunctionalInterface
     public interface Action {
@@ -23,11 +26,11 @@ public class Storyboard {
     }
 
     private final SharedConfig config;
-    private final SharedConfig.SyncMarkers sm;
-    private final SyncFrames syncFrames;
     private final Path outputDir;
     private final Page page;
     private final String language;
+    private final int videoWidth;
+    private final int videoHeight;
     private final List<Map<String, Object>> narrations = new ArrayList<>();
     private int narrationIdCounter = 0;
     private int screenActionIdCounter = 0;
@@ -41,34 +44,50 @@ public class Storyboard {
     private Integer pendingActionId = null;
     private String pendingVoice = null;
     private HighlightStyle highlightStyle;
-    private SyncFrameStyle syncFrameStyle;
+    private final boolean debugOverlay;
+    private final int fontSize;
     private Map<String, Map<String, String>> voices;
 
-    public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle, SyncFrameStyle syncFrameStyle, Map<String, Map<String, String>> voices) throws Exception {
+    private CdpVideoRecorder currentRecorder;
+    private long narrationStartTimeNanos;
+
+    public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle,
+                       boolean debugOverlay, int fontSize, Map<String, Map<String, String>> voices) throws Exception {
+        this(outputDir, page, language, highlightStyle, debugOverlay, fontSize, voices, 1280, 720);
+    }
+
+    public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle,
+                       boolean debugOverlay, int fontSize, Map<String, Map<String, String>> voices,
+                       int videoWidth, int videoHeight) throws Exception {
         this.config = SharedConfig.load();
-        this.sm = config.syncMarkers();
         this.outputDir = outputDir;
         this.page = page;
         this.language = language;
+        this.videoWidth = videoWidth;
+        this.videoHeight = videoHeight;
         this.highlightStyle = highlightStyle != null ? highlightStyle : new HighlightStyle();
-        this.syncFrameStyle = syncFrameStyle != null ? syncFrameStyle : new SyncFrameStyle();
+        this.debugOverlay = debugOverlay;
+        this.fontSize = fontSize;
         this.voices = voices;
-        SharedConfig.SyncFrameConfig overriddenSyncFrameConfig = SyncFrameStyles.applyTo(this.syncFrameStyle, config.syncFrame());
-        this.syncFrames = new SyncFrames(config, overriddenSyncFrameConfig);
         Files.createDirectories(outputDir);
-        injectInitFrame();
     }
 
-    public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle, SyncFrameStyle syncFrameStyle) throws Exception {
-        this(outputDir, page, language, highlightStyle, syncFrameStyle, null);
+    public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle,
+                       boolean debugOverlay, int fontSize) throws Exception {
+        this(outputDir, page, language, highlightStyle, debugOverlay, fontSize, null);
+    }
+
+    public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle,
+                       boolean debugOverlay) throws Exception {
+        this(outputDir, page, language, highlightStyle, debugOverlay, 24, null);
     }
 
     public Storyboard(Path outputDir, Page page, String language, HighlightStyle highlightStyle) throws Exception {
-        this(outputDir, page, language, highlightStyle, null, null);
+        this(outputDir, page, language, highlightStyle, false, 24, null);
     }
 
     public Storyboard(Path outputDir, Page page, String language) throws Exception {
-        this(outputDir, page, language, null, null, null);
+        this(outputDir, page, language, null, false, 24, null);
     }
 
     public Storyboard(Path outputDir, Page page) throws Exception {
@@ -83,33 +102,9 @@ public class Storyboard {
         return highlightStyle;
     }
 
-    public SyncFrameStyle getSyncFrameStyle() {
-        return syncFrameStyle;
-    }
-
     public Storyboard withHighlightStyle(HighlightStyle style) {
         this.highlightStyle = HighlightStyles.merge(this.highlightStyle, style);
         return this;
-    }
-
-    public Storyboard withSyncFrameStyle(SyncFrameStyle style) {
-        this.syncFrameStyle = SyncFrameStyles.merge(this.syncFrameStyle, style);
-        return this;
-    }
-
-    private boolean isDebugOverlay() {
-        Boolean val = syncFrameStyle.getDebugOverlay();
-        return val != null && val;
-    }
-
-    private int getFontSize() {
-        Integer val = syncFrameStyle.getFontSize();
-        return val != null ? val : 24;
-    }
-
-    private void injectInitFrame() throws Exception {
-        if (page == null) return;
-        syncFrames.injectInitFrame(page, language, isDebugOverlay(), getFontSize(), voices);
     }
 
     public int beginNarration() throws Exception {
@@ -137,20 +132,48 @@ public class Storyboard {
         pendingTranslations = new LinkedHashMap<>(translations);
         pendingScreenActions.clear();
         pendingHighlights.clear();
-        Map<String, String> tr = pendingTranslations.isEmpty() ? null : new LinkedHashMap<>(pendingTranslations);
-        injectSyncFrame(nid, sm.start(), text != null ? text : "", tr, voice);
+
+        if (page != null) {
+            startRecording(nid);
+        }
+
         return nid;
     }
 
+    private void startRecording(int narrationId) throws IOException {
+        Path videoDir = outputDir.resolve("videos");
+        Path videoFile = videoDir.resolve(String.format("narration-%03d.mp4", narrationId));
+        currentRecorder = new CdpVideoRecorder(page, videoFile, videoWidth, videoHeight, config);
+        currentRecorder.start();
+        narrationStartTimeNanos = System.nanoTime();
+    }
+
+    private void stopRecording() {
+        if (currentRecorder == null) return;
+        try {
+            currentRecorder.stop();
+            LOG.info(String.format("Narration %d video saved: %s (%d frames)",
+                    pendingNarrationId, currentRecorder.getOutputFile(), currentRecorder.getFrameCount()));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to stop CDP video recording for narration " + pendingNarrationId, e);
+        } finally {
+            currentRecorder = null;
+        }
+    }
+
+    private long elapsedMs() {
+        return (System.nanoTime() - narrationStartTimeNanos) / 1_000_000;
+    }
+
     public int beginScreenAction(String description) throws Exception {
-        return beginScreenAction(description, "casted", null);
+        return beginScreenAction(description, ScreenActionTiming.CASTED, null);
     }
 
     public int beginScreenAction() throws Exception {
-        return beginScreenAction(null, "casted", null);
+        return beginScreenAction(null, ScreenActionTiming.CASTED, null);
     }
 
-    public int beginScreenAction(String description, String timing, Integer durationMs) throws Exception {
+    public int beginScreenAction(String description, ScreenActionTiming timing, Integer durationMs) throws Exception {
         if (!narrationOpen) {
             throw new IllegalStateException(
                 "Cannot begin a screen action outside of a narration bracket");
@@ -159,7 +182,7 @@ public class Storyboard {
             throw new IllegalStateException(
                 "Cannot begin a new screen action while another is still open");
         }
-        if ("timed".equals(timing) && durationMs == null) {
+        if (timing == ScreenActionTiming.TIMED && durationMs == null) {
             throw new IllegalArgumentException(
                 "durationMs is required when timing is 'timed'");
         }
@@ -169,16 +192,15 @@ public class Storyboard {
         if (description != null) {
             action.put("description", description);
         }
-        if (timing != null && !"casted".equals(timing)) {
-            action.put("timing", timing);
+        if (timing != ScreenActionTiming.CASTED) {
+            action.put("timing", timing.value());
         }
         if (durationMs != null) {
             action.put("durationMs", durationMs);
         }
+        action.put("startOffsetMs", elapsedMs());
         pendingScreenActions.add(action);
         pendingActionId = said;
-        String timingStr = (timing != null && !"casted".equals(timing)) ? timing : null;
-        injectActionSyncFrame(said, sm.start(), description, timingStr, durationMs);
         return said;
     }
 
@@ -190,12 +212,14 @@ public class Storyboard {
             throw new IllegalStateException("Cannot highlight outside of a narration bracket");
         }
         int hid = highlightIdCounter++;
-        SharedConfig.HighlightConfig hlConfig = HighlightStyles.applyTo(highlightStyle, config.highlight());
-        injectHighlightSyncFrame(hid, sm.start());
+        SharedConfig hlConfig = config.withHighlightOverrides(highlightStyle);
+        long startOffset = elapsedMs();
         Highlight.highlight(page, locator, hlConfig);
-        injectHighlightSyncFrame(hid, sm.end());
+        long endOffset = elapsedMs();
         Map<String, Object> hl = new LinkedHashMap<>();
         hl.put("highlightId", hid);
+        hl.put("startOffsetMs", startOffset);
+        hl.put("endOffsetMs", endOffset);
         pendingHighlights.add(hl);
     }
 
@@ -203,8 +227,7 @@ public class Storyboard {
         if (narrationOpen) {
             throw new IllegalStateException("Cannot finalize: a narration bracket is still open");
         }
-        if (page == null) return;
-        syncFrames.injectDoneFrame(page);
+        flush();
     }
 
     public void endScreenAction() throws Exception {
@@ -212,7 +235,12 @@ public class Storyboard {
             throw new IllegalStateException(
                 "Cannot end screen action: no screen action is open");
         }
-        injectActionSyncFrame(pendingActionId, sm.end());
+        for (Map<String, Object> action : pendingScreenActions) {
+            if (pendingActionId.equals(action.get("screenActionId"))) {
+                action.put("endOffsetMs", elapsedMs());
+                break;
+            }
+        }
         pendingActionId = null;
     }
 
@@ -225,7 +253,9 @@ public class Storyboard {
             throw new IllegalStateException(
                 "Cannot end narration while a screen action is still open");
         }
-        injectSyncFrame(pendingNarrationId, sm.end());
+
+        stopRecording();
+
         Map<String, Object> narration = new LinkedHashMap<>();
         narration.put("narrationId", pendingNarrationId);
         if (pendingText != null) {
@@ -237,6 +267,7 @@ public class Storyboard {
         if (!pendingTranslations.isEmpty()) {
             narration.put("translations", new LinkedHashMap<>(pendingTranslations));
         }
+        narration.put("videoFile", String.format("videos/narration-%03d.mp4", pendingNarrationId));
         if (!pendingScreenActions.isEmpty()) {
             narration.put("screenActions", new ArrayList<>(pendingScreenActions));
         }
@@ -276,14 +307,14 @@ public class Storyboard {
     }
 
     public int screenAction(Action action) throws Exception {
-        return screenAction(null, "casted", null, action);
+        return screenAction(null, ScreenActionTiming.CASTED, null, action);
     }
 
     public int screenAction(String description, Action action) throws Exception {
-        return screenAction(description, "casted", null, action);
+        return screenAction(description, ScreenActionTiming.CASTED, null, action);
     }
 
-    public int screenAction(String description, String timing, Integer durationMs, Action action) throws Exception {
+    public int screenAction(String description, ScreenActionTiming timing, Integer durationMs, Action action) throws Exception {
         int said = beginScreenAction(description, timing, durationMs);
         try {
             action.execute(this);
@@ -291,30 +322,6 @@ public class Storyboard {
             endScreenAction();
         }
         return said;
-    }
-
-    private void injectSyncFrame(int narrationId, MarkerPosition marker) throws Exception {
-        injectSyncFrame(narrationId, marker, "", null, null);
-    }
-
-    private void injectSyncFrame(int narrationId, MarkerPosition marker, String text,
-                                 Map<String, String> translations, String voice) throws Exception {
-        if (page == null) return;
-        syncFrames.injectSyncFrame(page, narrationId, marker, text, translations, voice);
-    }
-
-    private void injectActionSyncFrame(int actionId, MarkerPosition marker) throws Exception {
-        injectActionSyncFrame(actionId, marker, null, null, null);
-    }
-
-    private void injectActionSyncFrame(int actionId, MarkerPosition marker, String description, String timing, Integer durationMs) throws Exception {
-        if (page == null) return;
-        syncFrames.injectActionSyncFrame(page, actionId, marker, description, timing, durationMs);
-    }
-
-    private void injectHighlightSyncFrame(int highlightId, MarkerPosition marker) throws Exception {
-        if (page == null) return;
-        syncFrames.injectHighlightSyncFrame(page, highlightId, marker);
     }
 
     private void flush() throws IOException {
@@ -327,11 +334,9 @@ public class Storyboard {
         if (hs != null && !hs.equals(new HighlightStyle())) {
             options.put("highlightStyle", mapper.convertValue(hs, Map.class));
         }
-        SyncFrameStyle sfs = syncFrameStyle;
-        if (sfs != null && !sfs.equals(new SyncFrameStyle())) {
-            options.put("syncFrameStyle", mapper.convertValue(sfs, Map.class));
-        }
         if (voices != null && !voices.isEmpty()) options.put("voices", voices);
+        if (debugOverlay) options.put("debugOverlay", true);
+        if (fontSize != 24) options.put("fontSize", fontSize);
         if (!options.isEmpty()) root.put("options", options);
         String json = mapper
             .writerWithDefaultPrettyPrinter()

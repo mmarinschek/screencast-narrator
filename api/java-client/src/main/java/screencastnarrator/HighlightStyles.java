@@ -21,24 +21,4 @@ public final class HighlightStyles {
                 override.getCoverage() != null ? override.getCoverage() : base.getCoverage()
         );
     }
-
-    public static SharedConfig.HighlightConfig applyTo(HighlightStyle style, SharedConfig.HighlightConfig config) {
-        return new SharedConfig.HighlightConfig(
-                style.getScrollWaitMs() != null ? style.getScrollWaitMs() : config.scrollWaitMs(),
-                style.getDrawDurationMs() != null ? style.getDrawDurationMs() : config.drawWaitMs(),
-                style.getRemoveWaitMs() != null ? style.getRemoveWaitMs() : config.removeWaitMs(),
-                style.getColor() != null ? style.getColor() : config.color(),
-                style.getPadding() != null ? style.getPadding() : config.padding(),
-                style.getAnimationSpeedMs() != null ? style.getAnimationSpeedMs() : config.animationSpeedMs(),
-                style.getLineWidthMin() != null ? style.getLineWidthMin() : config.lineWidthMin(),
-                style.getLineWidthMax() != null ? style.getLineWidthMax() : config.lineWidthMax(),
-                style.getOpacity() != null ? style.getOpacity() : config.opacity(),
-                style.getSegments() != null ? style.getSegments() : config.segments(),
-                style.getCoverage() != null ? style.getCoverage() : config.coverage(),
-                config.scrollJs(),
-                config.scrollWaitJs(),
-                config.drawJs(),
-                config.removeJs()
-        );
-    }
 }

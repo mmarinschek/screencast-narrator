@@ -1,4 +1,4 @@
-"""Main merge pipeline: combines video + TTS audio into a narrated screencast."""
+"""Main merge pipeline: combines per-narration videos + TTS audio into a narrated screencast."""
 
 from __future__ import annotations
 
@@ -10,35 +10,15 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 from screencast_narrator.ffmpeg import exec_ffmpeg, probe_duration_ms, require_command, secs
-from screencast_narrator.freeze_frames import (
-    FreezeFrame,
-    FreezeFrameCalculator,
-    GapCut,
-    HighlightEntry,
-    NarrationSegment,
-    adjust_for_cuts,
-    detect_dead_air_gaps,
-)
-from screencast_narrator.sync_detect import (
-    SyncDetectionResult,
-    build_sync_position_map,
-    detect_sync_frames,
-    strip_sync_frames,
-)
+from screencast_narrator.narration_segment import NarrationSegment
 from screencast_narrator.debug_overlay import OverlayResult, generate_overlay_filter
-from screencast_narrator.shared_config import load_shared_config
 from screencast_narrator.timeline_html import generate_timeline_html
 from screencast_narrator.tts import KokoroTTS, TTSBackend
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
     Narration as StoryboardNarration,
     Options as StoryboardOptions,
-    ScreenAction,
-    ScreenActionTiming,
-    ScreenActionType,
 )
-
-_SM = load_shared_config().sync_markers
 
 
 def process(
@@ -47,125 +27,189 @@ def process(
     debug_overlay: bool | None = None,
     font_size: int | None = None,
 ) -> None:
-    video_dir = target_dir / "videos"
+    storyboard_file = target_dir / "storyboard.json"
+    if not storyboard_file.exists():
+        raise RuntimeError(f"storyboard.json not found in {target_dir}")
+
+    storyboard_data = json.loads(storyboard_file.read_text(encoding="utf-8"))
+    narrations = storyboard_data.get("narrations", [])
+    if not narrations or "videoFile" not in narrations[0]:
+        raise RuntimeError(
+            "Per-narration video files expected. Each narration must have a 'videoFile' entry. "
+            "Use CdpVideoRecorder to record per-narration videos during browser automation."
+        )
+
+    _process_per_narration_videos(
+        target_dir, storyboard_data, tts_backend, debug_overlay, font_size
+    )
+
+
+def _process_per_narration_videos(
+    target_dir: Path,
+    storyboard_data: dict,
+    tts_backend: TTSBackend | None = None,
+    debug_overlay: bool | None = None,
+    font_size: int | None = None,
+) -> None:
     audio_dir = target_dir / "narration-audio"
     temp_dir = target_dir / "narration-tmp"
     output_file = target_dir / (target_dir.name + ".mp4")
 
-    video_file = _get_video_file(video_dir)
     require_command("ffmpeg")
-
     temp_dir.mkdir(parents=True, exist_ok=True)
-
-    sync_detection = detect_sync_frames(video_file, temp_dir)
-    if not sync_detection.green_frame_indices:
-        raise RuntimeError(
-            "No sync frames detected in video. Inject sync frames during recording using inject_sync_frame()."
-        )
-
-    storyboard = _build_storyboard_from_sync(sync_detection)
-
-    init_data = sync_detection.init_data
-    if debug_overlay is None:
-        debug_overlay = init_data.get("debugOverlay", False)
-    if font_size is None:
-        font_size = init_data.get("fontSize", 24)
-
-    narration_texts = _extract_narration_texts(storyboard)
-
-    if not narration_texts:
-        narration_spans = [s for s in sync_detection.qr_spans if s.sync_type == _SM.narration]
-        if narration_spans:
-            raise RuntimeError(
-                f"Detected {len(narration_spans)} narration sync frames but extracted 0 narration texts. "
-                f"This likely means the marker values in the recording client don't match the shared config."
-            )
-        exec_ffmpeg("-y", "-i", str(video_file), "-c:v", "libx264", "-preset", "fast", "-crf", "23", str(output_file))
-        return
-
     audio_dir.mkdir(parents=True, exist_ok=True)
+
+    options = storyboard_data.get("options", {})
+    if debug_overlay is None:
+        debug_overlay = options.get("debugOverlay", False)
+    if font_size is None:
+        font_size = options.get("fontSize", 24)
+
+    language = storyboard_data.get("language", "en")
+    narration_entries = storyboard_data.get("narrations", [])
+    voices_map = options.get("voices")
+
+    storyboard = StoryboardModel(
+        language=language,
+        narrations=[
+            StoryboardNarration(
+                narration_id=n.get("narrationId", i),
+                text=n.get("text"),
+                voice=n.get("voice"),
+                translations=n.get("translations"),
+            )
+            for i, n in enumerate(narration_entries)
+        ],
+        options=StoryboardOptions(voices=voices_map) if voices_map else None,
+    )
 
     if tts_backend is None:
         tts_backend = KokoroTTS()
     _generate_tts_audio(storyboard, audio_dir, tts_backend)
 
-    audio_durations: list[int] = []
-    for i in range(len(narration_texts)):
-        wav_file = audio_dir / _segment_name(i)
-        audio_durations.append(probe_duration_ms(wav_file) if wav_file.exists() else 0)
+    segment_files: list[Path] = []
+    audio_timestamps: list[int] = []
+    cumulative_ms = 0
 
-    _run_sync_frame_pipeline(
-        video_file, sync_detection, storyboard, audio_durations, audio_dir, temp_dir, output_file,
-        debug_overlay, font_size,
+    for i, entry in enumerate(narration_entries):
+        video_rel = entry.get("videoFile")
+        if not video_rel:
+            raise RuntimeError(f"Narration {i} has no videoFile entry")
+        clip_path = target_dir / video_rel
+        if not clip_path.exists():
+            raise RuntimeError(f"Narration {i} video file not found: {clip_path}")
+
+        clip_duration_ms = probe_duration_ms(clip_path)
+
+        wav_file = audio_dir / _segment_name(i)
+        audio_duration_ms = probe_duration_ms(wav_file) if wav_file.exists() else 0
+
+        normalized_clip = temp_dir / f"clip_{i:03d}.mp4"
+        exec_ffmpeg(
+            "-y", "-i", str(clip_path),
+            "-r", "25",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            "-an",
+            str(normalized_clip),
+        )
+
+        audio_timestamps.append(cumulative_ms)
+
+        freeze_needed_ms = audio_duration_ms - clip_duration_ms
+        if freeze_needed_ms > 100:
+            last_frame = temp_dir / f"freeze_{i:03d}.png"
+            exec_ffmpeg(
+                "-y", "-sseof", "-0.04", "-i", str(normalized_clip),
+                "-vframes", "1", str(last_frame),
+            )
+
+            freeze_seg = temp_dir / f"freeze_seg_{i:03d}.mp4"
+            exec_ffmpeg(
+                "-y", "-r", "25", "-f", "image2", "-i", str(last_frame),
+                "-vf", "loop=-1:1:0",
+                "-t", secs(freeze_needed_ms / 1000.0),
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-an",
+                str(freeze_seg),
+            )
+
+            combined = temp_dir / f"extended_{i:03d}.mp4"
+            concat_list = temp_dir / f"concat_{i:03d}.txt"
+            concat_list.write_text(
+                f"file '{normalized_clip.resolve()}'\nfile '{freeze_seg.resolve()}'\n",
+                encoding="utf-8",
+            )
+            exec_ffmpeg(
+                "-y", "-f", "concat", "-safe", "0", "-i", str(concat_list),
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-an",
+                str(combined),
+            )
+            segment_files.append(combined)
+            cumulative_ms += clip_duration_ms + freeze_needed_ms
+            log.info("Narration %d: clip=%dms, audio=%dms, freeze=%dms",
+                     i, clip_duration_ms, audio_duration_ms, freeze_needed_ms)
+        else:
+            segment_files.append(normalized_clip)
+            cumulative_ms += clip_duration_ms
+            log.info("Narration %d: clip=%dms, audio=%dms", i, clip_duration_ms, audio_duration_ms)
+
+    final_concat = temp_dir / "final_concat.txt"
+    final_concat.write_text(
+        "\n".join(f"file '{seg.resolve()}'" for seg in segment_files) + "\n",
+        encoding="utf-8",
+    )
+    concatenated_video = temp_dir / "concatenated.mp4"
+    exec_ffmpeg(
+        "-y", "-f", "concat", "-safe", "0", "-i", str(final_concat),
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-an",
+        str(concatenated_video),
     )
 
+    narration_texts = [n.get("text", "") for n in narration_entries]
+    narrations = [
+        NarrationSegment(
+            start_ms=audio_timestamps[i],
+            end_ms=audio_timestamps[i] + (probe_duration_ms(target_dir / narration_entries[i]["videoFile"])
+                                          if (target_dir / narration_entries[i]["videoFile"]).exists() else 0),
+            text=narration_texts[i],
+            audio_duration_ms=probe_duration_ms(audio_dir / _segment_name(i))
+                              if (audio_dir / _segment_name(i)).exists() else 0,
+        )
+        for i in range(len(narration_entries))
+    ]
+
+    primary_srt = output_file.with_suffix(".srt")
+    _write_srt(narrations, audio_timestamps, primary_srt)
+    srt_files: list[tuple[Path, str]] = [(primary_srt, language)]
+
+    translation_langs: set[str] = set()
+    for sn in storyboard.narrations:
+        if sn.translations:
+            translation_langs.update(sn.translations.keys())
+    for lang in sorted(translation_langs):
+        lang_srt = output_file.with_name(f"{output_file.stem}_{lang}.srt")
+        _write_srt(narrations, audio_timestamps, lang_srt, storyboard.narrations, lang)
+        srt_files.append((lang_srt, lang))
+
+    overlay: OverlayResult | None = None
+    if debug_overlay:
+        overlay = generate_overlay_filter(
+            narrations, audio_timestamps, storyboard,
+            temp_dir, font_size or 24,
+        )
+
+    _overlay_audio(
+        concatenated_video, narrations, audio_timestamps, audio_dir, output_file,
+        overlay=overlay, srt_files=srt_files,
+    )
+
+    _write_timeline(storyboard, narrations, audio_timestamps, target_dir)
     generate_timeline_html(target_dir)
-
-
-def _build_storyboard_from_sync(sync_detection: SyncDetectionResult) -> StoryboardModel:
-    sorted_spans = sorted(sync_detection.qr_spans, key=lambda s: s.first_frame)
-
-    narration_screen_action_ids: dict[int, list[int]] = {}
-    current_narration_id: int | None = None
-
-    for span in sorted_spans:
-        if span.sync_type == _SM.narration:
-            if span.marker == _SM.start:
-                current_narration_id = span.entity_id
-                narration_screen_action_ids.setdefault(current_narration_id, [])
-            elif span.marker == _SM.end:
-                current_narration_id = None
-        elif span.marker == _SM.start and current_narration_id is not None and span.sync_type in (_SM.action, _SM.highlight):
-            narration_screen_action_ids[current_narration_id].append(span.entity_id)
-
-    all_narration_ids = set(sync_detection.narration_texts.keys()) | set(narration_screen_action_ids.keys())
-
-    narrations: list[StoryboardNarration] = []
-    for narration_id in sorted(all_narration_ids):
-        text = sync_detection.narration_texts.get(narration_id)
-        translations = sync_detection.narration_translations.get(narration_id)
-        action_ids = narration_screen_action_ids.get(narration_id, [])
-        screen_actions: list[ScreenAction] = []
-        for aid in action_ids:
-            detected = sync_detection.screen_actions.get(aid)
-            if detected:
-                screen_actions.append(detected)
-            else:
-                screen_actions.append(ScreenAction(
-                    type=ScreenActionType.navigate,
-                    screen_action_id=aid,
-                ))
-
-        voice = sync_detection.narration_voices.get(narration_id)
-        narrations.append(StoryboardNarration(
-            narration_id=narration_id,
-            text=text,
-            voice=voice,
-            translations=translations,
-            screen_actions=screen_actions or None,
-        ))
-
-    language = sync_detection.init_data.get("language", "en")
-    voices_map = sync_detection.init_data.get("voices")
-    options = StoryboardOptions(voices=voices_map) if voices_map else None
-    return StoryboardModel(language=language, narrations=narrations, options=options)
 
 
 def _segment_name(index: int) -> str:
     return f"segment_{index:03d}.wav"
-
-
-def _get_video_file(video_dir: Path) -> Path:
-    if not video_dir.exists():
-        raise RuntimeError(f"Video directory not found: {video_dir}")
-    webm_files = sorted(video_dir.glob("*.webm"), key=lambda p: p.stat().st_mtime)
-    if not webm_files:
-        raise RuntimeError(f"No .webm file found in {video_dir}")
-    return webm_files[-1]
-
-
-def _extract_narration_texts(storyboard: StoryboardModel) -> list[str]:
-    return [n.text or "" for n in storyboard.narrations]
 
 
 def _resolve_voice(
@@ -196,427 +240,6 @@ def _generate_tts_audio(storyboard: StoryboardModel, audio_dir: Path, tts_backen
         if not wav_file.exists():
             voice = _resolve_voice(storyboard, narration)
             tts_backend.generate(text, wav_file, voice=voice)
-
-
-class IncompleteSyncError(RuntimeError):
-    def __init__(self, message: str, narrations: list[NarrationSegment]):
-        super().__init__(message)
-        self.narrations = narrations
-
-
-def _build_narrations_from_sync(
-    storyboard: StoryboardModel,
-    narration_texts: list[str],
-    audio_durations: list[int],
-    sync_positions: dict[str, float],
-) -> list[NarrationSegment]:
-    narrations: list[NarrationSegment] = []
-    for i, text in enumerate(narration_texts):
-        start_key = _SM.narration_start(i)
-        end_key = _SM.narration_end(i)
-        if start_key not in sync_positions:
-            raise IncompleteSyncError(
-                f"Missing START sync frame for narration {i}", narrations
-            )
-        if end_key not in sync_positions:
-            end_key = _find_last_action_end_key(storyboard, i, sync_positions)
-            if end_key is None:
-                raise IncompleteSyncError(
-                    f"Missing END sync frame for narration {i}", narrations
-                )
-        start_ms = int(sync_positions[start_key] * 1000)
-        end_ms = int(sync_positions[end_key] * 1000)
-        narrations.append(NarrationSegment(start_ms, end_ms, text, audio_durations[i]))
-    return narrations
-
-
-def _find_last_action_end_key(
-    storyboard: StoryboardModel, narration_index: int, sync_positions: dict[str, float]
-) -> str | None:
-    if narration_index >= len(storyboard.narrations):
-        return None
-    actions = storyboard.narrations[narration_index].screen_actions or []
-    for action in reversed(actions):
-        if action.type == ScreenActionType.highlight:
-            key = _SM.highlight_end(action.screen_action_id)
-        else:
-            key = _SM.action_end(action.screen_action_id)
-        if key in sync_positions:
-            return key
-    return None
-
-
-def _build_highlights(
-    storyboard: StoryboardModel,
-    sync_positions: dict[str, float],
-) -> list[HighlightEntry]:
-    highlights: list[HighlightEntry] = []
-    for narration in storyboard.narrations:
-        for action in narration.screen_actions or []:
-            if action.timing == ScreenActionTiming.elastic:
-                continue
-            if action.type == ScreenActionType.highlight:
-                start_key = _SM.highlight_start(action.screen_action_id)
-                end_key = _SM.highlight_end(action.screen_action_id)
-            else:
-                start_key = _SM.action_start(action.screen_action_id)
-                end_key = _SM.action_end(action.screen_action_id)
-            if start_key not in sync_positions or end_key not in sync_positions:
-                continue
-            start_ms = int(sync_positions[start_key] * 1000)
-            end_ms = int(sync_positions[end_key] * 1000)
-            if end_ms > start_ms:
-                highlights.append(HighlightEntry(start_ms, end_ms - start_ms))
-    return highlights
-
-
-def _run_sync_frame_pipeline(
-    raw_video_file: Path,
-    sync_detection: SyncDetectionResult,
-    storyboard: StoryboardModel,
-    audio_durations: list[int],
-    audio_dir: Path,
-    temp_dir: Path,
-    output_file: Path,
-    debug_overlay: bool = False,
-    font_size: int = 24,
-) -> None:
-    narration_texts = _extract_narration_texts(storyboard)
-    qr_spans = sync_detection.qr_spans
-    green_frame_indices = sync_detection.green_frame_indices
-
-    sync_positions = build_sync_position_map(qr_spans, green_frame_indices)
-    stripped_video = strip_sync_frames(raw_video_file, green_frame_indices, temp_dir)
-    stripped_duration_ms = probe_duration_ms(stripped_video)
-
-    try:
-        narrations = _build_narrations_from_sync(storyboard, narration_texts, audio_durations, sync_positions)
-    except IncompleteSyncError as exc:
-        target_dir = output_file.parent
-        _write_partial_diagnostics(
-            storyboard, exc.narrations, sync_positions, target_dir
-        )
-        generate_timeline_html(target_dir)
-        raise
-
-    highlights = _build_highlights(storyboard, sync_positions)
-
-    result = FreezeFrameCalculator(narrations, highlights, stripped_duration_ms).calculate()
-
-    final_video = _build_extended_video(stripped_video, result.freeze_frames, stripped_duration_ms / 1000.0, temp_dir)
-
-    extended_duration_ms = probe_duration_ms(final_video)
-    audio_delays = result.adjusted_timestamps
-
-    max_audio_end_ms = max(
-        (audio_delays[i] + narrations[i].audio_duration_ms for i in range(len(narrations))),
-        default=0,
-    )
-    tail_freeze_ms = max_audio_end_ms - extended_duration_ms
-    if tail_freeze_ms > 0:
-        final_video = _append_tail_freeze(final_video, tail_freeze_ms, temp_dir)
-
-    gap_cuts = detect_dead_air_gaps(narrations, audio_delays, [])
-    if gap_cuts:
-        final_video = _cut_gaps(final_video, gap_cuts, temp_dir)
-        final_timestamps = [adjust_for_cuts(ts, gap_cuts) for ts in audio_delays]
-    else:
-        final_timestamps = audio_delays
-
-    _write_gap_cuts_json(gap_cuts, output_file.parent)
-    _write_timeline(
-        storyboard, narrations, result.adjusted_timestamps, result.freeze_frames, gap_cuts, output_file.parent
-    )
-
-    overlay: OverlayResult | None = None
-    if debug_overlay:
-        overlay = generate_overlay_filter(
-            narrations, final_timestamps, storyboard, sync_positions,
-            result.freeze_frames, gap_cuts, temp_dir, font_size,
-        )
-
-    primary_srt = output_file.with_suffix(".srt")
-    _write_srt(narrations, final_timestamps, primary_srt)
-    srt_files: list[tuple[Path, str]] = [(primary_srt, storyboard.language)]
-
-    translation_langs: set[str] = set()
-    for sn in storyboard.narrations:
-        if sn.translations:
-            translation_langs.update(sn.translations.keys())
-
-    for lang in sorted(translation_langs):
-        lang_srt = output_file.with_name(f"{output_file.stem}_{lang}.srt")
-        _write_srt(narrations, final_timestamps, lang_srt, storyboard.narrations, lang)
-        srt_files.append((lang_srt, lang))
-
-    _overlay_audio(final_video, narrations, final_timestamps, audio_dir, output_file, overlay, srt_files)
-
-
-# --- Video building ---
-
-
-def _extract_freeze_pngs(
-    video_file: Path,
-    sorted_ff: list[FreezeFrame],
-    video_duration_s: float,
-    temp_dir: Path,
-) -> None:
-    frame_times: list[tuple[int, float]] = []
-    for i, ff in enumerate(sorted_ff):
-        extract_s = min(ff.time_ms / 1000.0, max(video_duration_s - 0.04, 0.0))
-        frame_times.append((i, extract_s))
-
-    frame_nums = [round(t * 25) for _, t in frame_times]
-    select_expr = "+".join(f"eq(n,{n})" for n in frame_nums)
-
-    freeze_dir = temp_dir / "freeze_pngs"
-    freeze_dir.mkdir(exist_ok=True)
-
-    filter_file = temp_dir / "freeze_select.txt"
-    filter_file.write_text(f"select='{select_expr}',setpts=N/TB", encoding="utf-8")
-
-    exec_ffmpeg(
-        "-y", "-i", str(video_file),
-        "-filter_script:v", str(filter_file),
-        "-vsync", "vfr",
-        str(freeze_dir / "f_%04d.png"),
-    )
-
-    extracted = sorted(freeze_dir.glob("f_*.png"))
-    for idx, (i, _) in enumerate(frame_times):
-        target = temp_dir / f"freeze_{i:03d}.png"
-        if idx < len(extracted):
-            extracted[idx].rename(target)
-        else:
-            exec_ffmpeg(
-                "-y", "-i", str(video_file),
-                "-ss", secs(frame_times[i][1]),
-                "-vframes", "1",
-                str(target),
-            )
-
-
-def _build_extended_video(
-    video_file: Path,
-    freeze_frames: list[FreezeFrame],
-    video_duration_s: float,
-    temp_dir: Path,
-) -> Path:
-    if not freeze_frames:
-        return video_file
-
-    sorted_ff = sorted(freeze_frames, key=lambda f: f.time_ms)
-
-    _extract_freeze_pngs(video_file, sorted_ff, video_duration_s, temp_dir)
-
-    segment_files: list[Path] = []
-    last_cut_s = 0.0
-
-    for i, ff in enumerate(sorted_ff):
-        cut_s = ff.time_ms / 1000.0
-        ff_duration_s = ff.duration_ms / 1000.0
-
-        if cut_s > last_cut_s:
-            seg_file = temp_dir / f"seg_{i:03d}.mp4"
-            exec_ffmpeg(
-                "-y",
-                "-i",
-                str(video_file),
-                "-ss",
-                secs(last_cut_s),
-                "-to",
-                secs(cut_s),
-                "-r",
-                "25",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "fast",
-                "-crf",
-                "23",
-                "-an",
-                str(seg_file),
-            )
-            segment_files.append(seg_file)
-
-        freeze_img = temp_dir / f"freeze_{i:03d}.png"
-        freeze_seg = temp_dir / f"freeze_seg_{i:03d}.mp4"
-        exec_ffmpeg(
-            "-y",
-            "-r",
-            "25",
-            "-f",
-            "image2",
-            "-i",
-            str(freeze_img),
-            "-vf",
-            "loop=-1:1:0",
-            "-t",
-            secs(ff_duration_s),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "23",
-            "-pix_fmt",
-            "yuv420p",
-            "-an",
-            str(freeze_seg),
-        )
-        segment_files.append(freeze_seg)
-        last_cut_s = cut_s
-
-    if last_cut_s < video_duration_s - 0.1:
-        final_seg = temp_dir / "seg_final.mp4"
-        exec_ffmpeg(
-            "-y",
-            "-i",
-            str(video_file),
-            "-ss",
-            secs(last_cut_s),
-            "-r",
-            "25",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "23",
-            "-an",
-            str(final_seg),
-        )
-        segment_files.append(final_seg)
-
-    return _concat_segments(segment_files, temp_dir / "concat.txt", temp_dir / "extended.mp4")
-
-
-def _concat_segments(segment_files: list[Path], concat_list: Path, output: Path) -> Path:
-    content = "\n".join(f"file '{seg.resolve()}'" for seg in segment_files) + "\n"
-    concat_list.write_text(content, encoding="utf-8")
-    exec_ffmpeg(
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_list),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-an",
-        str(output),
-    )
-    return output
-
-
-def _append_tail_freeze(video_file: Path, duration_ms: int, temp_dir: Path) -> Path:
-    last_frame = temp_dir / "tail_freeze.png"
-    exec_ffmpeg("-y", "-sseof", "-0.1", "-i", str(video_file), "-vframes", "1", str(last_frame))
-
-    freeze_seg = temp_dir / "tail_freeze_seg.mp4"
-    exec_ffmpeg(
-        "-y",
-        "-r",
-        "25",
-        "-f",
-        "image2",
-        "-i",
-        str(last_frame),
-        "-vf",
-        "loop=-1:1:0",
-        "-t",
-        secs(duration_ms / 1000.0),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-pix_fmt",
-        "yuv420p",
-        "-an",
-        str(freeze_seg),
-    )
-
-    concat_list = temp_dir / "tail_concat.txt"
-    concat_list.write_text(f"file '{video_file.resolve()}'\nfile '{freeze_seg.resolve()}'\n", encoding="utf-8")
-
-    extended = temp_dir / "extended_with_tail.mp4"
-    exec_ffmpeg(
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_list),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "fast",
-        "-crf",
-        "23",
-        "-an",
-        str(extended),
-    )
-    return extended
-
-
-def _cut_gaps(video_file: Path, gap_cuts: list[GapCut], temp_dir: Path) -> Path:
-    sorted_gaps = sorted(gap_cuts, key=lambda g: g.start_ms)
-    segment_files: list[Path] = []
-    last_end_s = 0.0
-
-    for i, gap in enumerate(sorted_gaps):
-        cut_start_s = gap.start_ms / 1000.0
-        if cut_start_s > last_end_s:
-            seg_file = temp_dir / f"kept_{i:03d}.mp4"
-            exec_ffmpeg(
-                "-y",
-                "-i",
-                str(video_file),
-                "-ss",
-                secs(last_end_s),
-                "-to",
-                secs(cut_start_s),
-                "-c:v",
-                "libx264",
-                "-preset",
-                "fast",
-                "-crf",
-                "23",
-                "-an",
-                str(seg_file),
-            )
-            segment_files.append(seg_file)
-        last_end_s = gap.end_ms / 1000.0
-
-    video_duration_s = probe_duration_ms(video_file) / 1000.0
-    if last_end_s < video_duration_s - 0.05:
-        final_seg = temp_dir / "kept_final.mp4"
-        exec_ffmpeg(
-            "-y",
-            "-i",
-            str(video_file),
-            "-ss",
-            secs(last_end_s),
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "23",
-            "-an",
-            str(final_seg),
-        )
-        segment_files.append(final_seg)
-
-    return _concat_segments(segment_files, temp_dir / "concat_cuts.txt", temp_dir / "cut.mp4")
 
 
 def _fmt_srt_time(ms: int) -> str:
@@ -813,62 +436,10 @@ def _overlay_audio(
     exec_ffmpeg(*cmd)
 
 
-def _write_partial_diagnostics(
-    storyboard: StoryboardModel,
-    narrations: list[NarrationSegment],
-    sync_positions: dict[str, float],
-    target_dir: Path,
-) -> None:
-    timestamps = [n.start_ms for n in narrations]
-    _write_timeline(storyboard, narrations, timestamps, [], [], target_dir)
-
-    storyboard_data: dict = {
-        "language": storyboard.language,
-        "narrations": [
-            {
-                "narrationId": n.narration_id,
-                "text": n.text,
-                **({"voice": n.voice} if n.voice else {}),
-                **({"translations": n.translations} if n.translations else {}),
-                **({"screenActions": [_screen_action_to_json(a) for a in n.screen_actions]} if n.screen_actions else {}),
-            }
-            for n in storyboard.narrations
-        ],
-    }
-    if storyboard.options and storyboard.options.voices:
-        storyboard_data["options"] = {"voices": storyboard.options.voices}
-    (target_dir / "storyboard.json").write_text(
-        json.dumps(storyboard_data, indent=2), encoding="utf-8"
-    )
-
-    sorted_positions = dict(sorted(sync_positions.items(), key=lambda kv: kv[1]))
-    (target_dir / "sync_positions.json").write_text(
-        json.dumps(sorted_positions, indent=2), encoding="utf-8"
-    )
-
-
-def _write_gap_cuts_json(gap_cuts: list[GapCut], target_dir: Path) -> None:
-    data = [{"startMs": g.start_ms, "endMs": g.end_ms} for g in gap_cuts]
-    (target_dir / "gap-cuts.json").write_text(json.dumps(data), encoding="utf-8")
-
-
-def _screen_action_to_json(action: ScreenAction) -> dict:
-    result: dict = {"type": action.type.value, "screenActionId": action.screen_action_id}
-    if action.description is not None:
-        result["description"] = action.description
-    if action.timing is not None and action.timing != ScreenActionTiming.casted:
-        result["timing"] = action.timing.value
-    if action.duration_ms is not None:
-        result["durationMs"] = action.duration_ms
-    return result
-
-
 def _write_timeline(
     storyboard: StoryboardModel,
     narrations: list[NarrationSegment],
     adjusted_timestamps: list[int],
-    freeze_frames: list[FreezeFrame],
-    gap_cuts: list[GapCut],
     target_dir: Path,
 ) -> None:
     timeline_narrations = []
@@ -882,14 +453,10 @@ def _write_timeline(
             "bracketStartMs": n.start_ms,
             "bracketEndMs": n.end_ms,
         }
-        if i < len(storyboard.narrations) and storyboard.narrations[i].screen_actions:
-            entry["screenActions"] = [_screen_action_to_json(a) for a in storyboard.narrations[i].screen_actions]
         timeline_narrations.append(entry)
 
     data = {
         "narrations": timeline_narrations,
-        "freezeFrames": [{"timeMs": ff.time_ms, "durationMs": ff.duration_ms} for ff in freeze_frames],
-        "gapCuts": [{"startMs": gc.start_ms, "endMs": gc.end_ms} for gc in gap_cuts],
     }
     (target_dir / "timeline.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 

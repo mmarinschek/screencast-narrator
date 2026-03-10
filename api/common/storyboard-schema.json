@@ -16,7 +16,6 @@
       "type": "object",
       "properties": {
         "highlightStyle": { "$ref": "#/definitions/highlightStyle" },
-        "syncFrameStyle": { "$ref": "#/definitions/syncFrameStyle" },
         "voices": {
           "type": "object",
           "additionalProperties": {
@@ -24,6 +23,15 @@
             "additionalProperties": { "type": "string" }
           },
           "description": "Named voice identities mapping alias to language-specific TTS voices (e.g. {\"nathaly\": {\"en\": \"bf_alice\", \"de\": \"de_natasha\"}})"
+        },
+        "debugOverlay": {
+          "type": "boolean",
+          "description": "Show debug overlay in the final video"
+        },
+        "fontSize": {
+          "type": "integer",
+          "minimum": 8,
+          "description": "Font size for debug overlay text"
         }
       },
       "additionalProperties": false
@@ -72,6 +80,10 @@
         "screenActions": {
           "type": "array",
           "items": { "$ref": "#/definitions/screenAction" }
+        },
+        "videoFile": {
+          "type": "string",
+          "description": "Relative path to the per-narration video file (CDP recording mode)"
         }
       },
       "additionalProperties": false
@@ -135,32 +147,6 @@
           "minimum": 0,
           "maximum": 1,
           "description": "How much of the rectangle perimeter is drawn (0-1)"
-        }
-      },
-      "additionalProperties": false
-    },
-    "syncFrameStyle": {
-      "type": "object",
-      "description": "User-customizable sync frame timing and overlay settings. All fields are optional — unset fields inherit from the shared config defaults.",
-      "properties": {
-        "displayDurationMs": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "How long the green QR overlay is shown per frame (default 160ms = ~4 frames at 25fps)"
-        },
-        "postRemovalGapMs": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "Gap after removing the overlay before the next action (default 80ms)"
-        },
-        "debugOverlay": {
-          "type": "boolean",
-          "description": "Show narration text as subtitle overlay during recording"
-        },
-        "fontSize": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Font size for the debug subtitle overlay (default 24)"
         }
       },
       "additionalProperties": false

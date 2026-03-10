@@ -20,7 +20,7 @@ from PIL import Image
 from pyzbar.pyzbar import decode as decode_qr
 
 from screencast_narrator.merge import process
-from screencast_narrator_client import Storyboard, SyncFrameStyle
+from screencast_narrator_client import Storyboard
 from wikipedia_search_recording import record_wikipedia_search
 
 REPLAY_COUNT = 100
@@ -29,18 +29,13 @@ REPLAY_COUNT = 100
 def _record(output_dir: Path) -> None:
     from playwright.sync_api import sync_playwright
 
-    videos_dir = output_dir / "videos"
-    videos_dir.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
             viewport={"width": 1280, "height": 720},
-            record_video_dir=str(videos_dir),
-            record_video_size={"width": 1280, "height": 720},
         )
         page = context.new_page()
-        sb = Storyboard(output_dir, page, sync_frame_style=SyncFrameStyle(debug_overlay=True))
+        sb = Storyboard(output_dir, page, debug_overlay=True)
 
         for i in range(REPLAY_COUNT):
             record_wikipedia_search(sb, page, iteration=i)

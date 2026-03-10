@@ -9,15 +9,9 @@ import { chromium } from "playwright";
 import { Storyboard, HighlightStyle } from "../api/typescript-client/src/index";
 
 async function record(outputDir: string, htmlPath: string, color: string, animationSpeedMs: number): Promise<void> {
-  const videosDir = `${outputDir}/videos`;
-
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },
-    recordVideo: {
-      dir: videosDir,
-      size: { width: 1280, height: 720 },
-    },
   });
   const page = await context.newPage();
 
@@ -26,7 +20,6 @@ async function record(outputDir: string, htmlPath: string, color: string, animat
     debugOverlay: true,
     highlightStyle: style,
   });
-  await storyboard.init();
 
   await page.goto(`file://${htmlPath}`, { waitUntil: "load" });
   await page.waitForSelector("#target", { state: "visible" });

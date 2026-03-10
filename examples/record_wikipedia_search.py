@@ -14,23 +14,18 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from screencast_narrator_client import Storyboard, SyncFrameStyle
+from screencast_narrator_client import Storyboard
 
 
 def record(output_dir: Path) -> None:
-    videos_dir = output_dir / "videos"
-    videos_dir.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
             viewport={"width": 1280, "height": 720},
-            record_video_dir=str(videos_dir),
-            record_video_size={"width": 1280, "height": 720},
         )
         page = context.new_page()
 
-        storyboard = Storyboard(output_dir, page, sync_frame_style=SyncFrameStyle(debug_overlay=True))
+        storyboard = Storyboard(output_dir, page, debug_overlay=True)
 
         # --- Step 1: Navigate to Wikipedia ---
         def navigate(sb: Storyboard) -> None:

@@ -543,59 +543,24 @@ def test_done_raises_if_narration_open(tmp_path: Path) -> None:
         sb.done()
 
 
-class _TrackingSyncFrameInjector:
-    """Wraps SyncFrameInjector to record which sync frames were requested (without needing a browser)."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, int, str]] = []
-
-    def inject_init_frame(self, page, language: str, debug_overlay: bool = False, font_size: int = 24, voices=None) -> None:
-        self.calls.append(("init", 0, "init"))
-
-    def inject_sync_frame(self, page, narration_id: int, marker, text: str = "", translations=None, voice=None) -> None:
-        self.calls.append(("narration", narration_id, marker.value))
-
-    def inject_action_sync_frame(self, page, screen_action_id: int, marker, description=None,
-                                  screen_action_type=None, timing=None, duration_ms=None) -> None:
-        self.calls.append(("action", screen_action_id, marker.value))
-
-    def inject_highlight_sync_frame(self, page, screen_action_id: int, marker) -> None:
-        self.calls.append(("highlight", screen_action_id, marker.value))
-
-    def inject_done_frame(self, page) -> None:
-        self.calls.append(("done", 0, "done"))
-
-
-def _storyboard_with_tracking(tmp_path: Path) -> tuple[Storyboard, _TrackingSyncFrameInjector]:
-    tracker = _TrackingSyncFrameInjector()
+def test_end_narration_records_narration_with_actions(tmp_path: Path) -> None:
     sb = Storyboard(tmp_path)
-    sb._page = object()
-    sb._sync = tracker  # type: ignore[assignment]
-    return sb, tracker
-
-
-def test_end_narration_always_injects_end_sync_frame(tmp_path: Path) -> None:
-    sb, tracker = _storyboard_with_tracking(tmp_path)
-    tracker.calls.clear()
-
     sb.begin_narration("With actions")
     sb.begin_screen_action(description="Click")
     sb.end_screen_action()
     sb.end_narration()
 
-    narration_end_calls = [c for c in tracker.calls if c[0] == "narration" and c[2] == "end"]
-    assert len(narration_end_calls) == 1
+    assert len(sb.narrations) == 1
+    assert sb.narrations[0].text == "With actions"
 
 
-def test_end_narration_injects_end_sync_frame_without_actions(tmp_path: Path) -> None:
-    sb, tracker = _storyboard_with_tracking(tmp_path)
-    tracker.calls.clear()
-
+def test_end_narration_records_narration_without_actions(tmp_path: Path) -> None:
+    sb = Storyboard(tmp_path)
     sb.begin_narration("No actions")
     sb.end_narration()
 
-    narration_end_calls = [c for c in tracker.calls if c[0] == "narration" and c[2] == "end"]
-    assert len(narration_end_calls) == 1
+    assert len(sb.narrations) == 1
+    assert sb.narrations[0].text == "No actions"
 
 
 def test_voice_stored_on_narration(tmp_path: Path) -> None:

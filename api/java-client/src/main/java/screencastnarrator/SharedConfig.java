@@ -1,15 +1,38 @@
 package screencastnarrator;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
-public record SharedConfig(SyncMarkers syncMarkers, SyncFrameConfig syncFrame, HighlightConfig highlight) {
+import screencastnarrator.generated.ConfigSchema;
+import screencastnarrator.generated.HighlightConfig;
+import screencastnarrator.generated.HighlightStyle;
+import screencastnarrator.generated.RecordingConfig;
+
+public class SharedConfig {
 
     private static SharedConfig instance;
+
+    private final RecordingConfig recording;
+    private final HighlightConfig highlight;
+
+    private SharedConfig(RecordingConfig recording, HighlightConfig highlight) {
+        this.recording = recording;
+        this.highlight = highlight;
+    }
+
+    public RecordingConfig recording() {
+        return recording;
+    }
+
+    public HighlightConfig highlight() {
+        return highlight;
+    }
 
     public static SharedConfig load() {
         if (instance != null) {
@@ -17,15 +40,73 @@ public record SharedConfig(SyncMarkers syncMarkers, SyncFrameConfig syncFrame, H
         }
         try (InputStream is = SharedConfig.class.getResourceAsStream("/common/config.json")) {
             if (is == null) {
-                throw new IllegalStateException(
-                        "common/config.json not found on classpath");
+                throw new IllegalStateException("common/config.json not found on classpath");
             }
-            JsonNode root = new ObjectMapper().readTree(is);
-            instance = parse(root);
+            ConfigSchema schema = new ObjectMapper().readValue(is, ConfigSchema.class);
+            HighlightConfig hl = schema.getHighlight();
+            hl.setScrollJs(resolveJs(hl.getScrollJs()));
+            hl.setScrollWaitJs(resolveJs(hl.getScrollWaitJs()));
+            hl.setDrawJs(resolveJs(hl.getDrawJs()));
+            hl.setRemoveJs(resolveJs(hl.getRemoveJs()));
+            instance = new SharedConfig(schema.getRecording(), hl);
             return instance;
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    public String resolvedDrawJs() {
+        String result = highlight.getDrawJs();
+        Map<String, Object> fields = new ObjectMapper().convertValue(highlight, Map.class);
+        for (Map.Entry<String, Object> entry : fields.entrySet()) {
+            result = result.replace("{{" + entry.getKey() + "}}", String.valueOf(entry.getValue()));
+        }
+        return result;
+    }
+
+    public List<String> ffmpegArgs(String outputFile) {
+        RecordingConfig rec = recording;
+        return List.of(
+                "ffmpeg",
+                "-loglevel", "error",
+                "-f", "image2pipe",
+                "-avioflags", "direct",
+                "-fpsprobesize", "0",
+                "-probesize", "32",
+                "-analyzeduration", "0",
+                "-c:v", "mjpeg",
+                "-i", "pipe:0",
+                "-y", "-an",
+                "-r", String.valueOf(rec.getFps()),
+                "-c:v", rec.getCodec().value(),
+                "-preset", rec.getPreset().value(),
+                "-crf", String.valueOf(rec.getCrf()),
+                "-pix_fmt", rec.getPixelFormat().value(),
+                "-threads", "1",
+                outputFile
+        );
+    }
+
+    public SharedConfig withHighlightOverrides(HighlightStyle style) {
+        HighlightConfig hl = highlight;
+        HighlightConfig overridden = new HighlightConfig(
+                style.getScrollWaitMs() != null ? style.getScrollWaitMs() : hl.getScrollWaitMs(),
+                style.getDrawDurationMs() != null ? style.getDrawDurationMs() : hl.getDrawWaitMs(),
+                style.getRemoveWaitMs() != null ? style.getRemoveWaitMs() : hl.getRemoveWaitMs(),
+                style.getColor() != null ? style.getColor() : hl.getColor(),
+                style.getPadding() != null ? style.getPadding() : hl.getPadding(),
+                style.getAnimationSpeedMs() != null ? style.getAnimationSpeedMs() : hl.getAnimationSpeedMs(),
+                style.getLineWidthMin() != null ? style.getLineWidthMin() : hl.getLineWidthMin(),
+                style.getLineWidthMax() != null ? style.getLineWidthMax() : hl.getLineWidthMax(),
+                style.getOpacity() != null ? style.getOpacity() : hl.getOpacity(),
+                style.getSegments() != null ? style.getSegments() : hl.getSegments(),
+                style.getCoverage() != null ? style.getCoverage() : hl.getCoverage(),
+                hl.getScrollJs(),
+                hl.getScrollWaitJs(),
+                hl.getDrawJs(),
+                hl.getRemoveJs()
+        );
+        return new SharedConfig(recording, overridden);
     }
 
     private static String resolveJs(String value) {
@@ -33,139 +114,9 @@ public record SharedConfig(SyncMarkers syncMarkers, SyncFrameConfig syncFrame, H
         String resourcePath = "/common/" + value;
         try (InputStream js = SharedConfig.class.getResourceAsStream(resourcePath)) {
             if (js == null) return value;
-            return new String(js.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).strip();
+            return new String(js.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException e) {
             return value;
-        }
-    }
-
-    private static SharedConfig parse(JsonNode root) {
-        JsonNode smNode = root.get("syncMarkers");
-        JsonNode sf = root.get("syncFrame");
-        JsonNode hl = root.get("highlight");
-
-        SyncMarkers syncMarkers = new SyncMarkers(
-                SyncType.INIT,
-                SyncType.NARRATION,
-                SyncType.ACTION,
-                SyncType.HIGHLIGHT,
-                SyncType.DONE,
-                smNode.get("separator").asText(),
-                MarkerPosition.START,
-                MarkerPosition.END
-        );
-
-        SyncFrameConfig syncFrame = new SyncFrameConfig(
-                sf.get("qrSize").asInt(),
-                sf.get("displayDurationMs").asInt(),
-                sf.get("doneDisplayDurationMs").asInt(),
-                sf.get("postRemovalGapMs").asInt(),
-                sf.get("backgroundColor").asText(),
-                resolveJs(sf.get("injectJs").asText()),
-                resolveJs(sf.get("removeJs").asText())
-        );
-
-        HighlightConfig highlight = new HighlightConfig(
-                hl.get("scrollWaitMs").asInt(),
-                hl.get("drawWaitMs").asInt(),
-                hl.get("removeWaitMs").asInt(),
-                hl.get("color").asText(),
-                hl.get("padding").asInt(),
-                hl.get("animationSpeedMs").asInt(),
-                hl.get("lineWidthMin").asInt(),
-                hl.get("lineWidthMax").asInt(),
-                hl.get("opacity").asDouble(),
-                hl.get("segments").asInt(),
-                hl.get("coverage").asDouble(),
-                resolveJs(hl.get("scrollJs").asText()),
-                resolveJs(hl.get("scrollWaitJs").asText()),
-                resolveJs(hl.get("drawJs").asText()),
-                resolveJs(hl.get("removeJs").asText())
-        );
-
-        return new SharedConfig(syncMarkers, syncFrame, highlight);
-    }
-
-    public record SyncMarkers(
-            SyncType init,
-            SyncType narration,
-            SyncType action,
-            SyncType highlight,
-            SyncType done,
-            String separator,
-            MarkerPosition start,
-            MarkerPosition end
-    ) {
-        public String key(SyncType syncType, int entityId, MarkerPosition marker) {
-            return syncType.value() + separator + entityId + separator + marker.value();
-        }
-
-        public String narrationStart(int narrationId) {
-            return key(narration, narrationId, start);
-        }
-
-        public String narrationEnd(int narrationId) {
-            return key(narration, narrationId, end);
-        }
-
-        public String actionStart(int actionId) {
-            return key(action, actionId, start);
-        }
-
-        public String actionEnd(int actionId) {
-            return key(action, actionId, end);
-        }
-
-        public String highlightStart(int highlightId) {
-            return key(highlight, highlightId, start);
-        }
-
-        public String highlightEnd(int highlightId) {
-            return key(highlight, highlightId, end);
-        }
-    }
-
-    public record SyncFrameConfig(
-            int qrSize,
-            int displayDurationMs,
-            int doneDisplayDurationMs,
-            int postRemovalGapMs,
-            String backgroundColor,
-            String injectJs,
-            String removeJs
-    ) {
-        public String resolvedInjectJs() {
-            return injectJs.replace("{{backgroundColor}}", backgroundColor);
-        }
-    }
-
-    public record HighlightConfig(
-            int scrollWaitMs,
-            int drawWaitMs,
-            int removeWaitMs,
-            String color,
-            int padding,
-            int animationSpeedMs,
-            int lineWidthMin,
-            int lineWidthMax,
-            double opacity,
-            int segments,
-            double coverage,
-            String scrollJs,
-            String scrollWaitJs,
-            String drawJs,
-            String removeJs
-    ) {
-        public String resolvedDrawJs() {
-            return drawJs
-                    .replace("{{padding}}", String.valueOf(padding))
-                    .replace("{{lineWidthMin}}", String.valueOf(lineWidthMin))
-                    .replace("{{lineWidthMax}}", String.valueOf(lineWidthMax))
-                    .replace("{{opacity}}", String.valueOf(opacity))
-                    .replace("{{segments}}", String.valueOf(segments))
-                    .replace("{{coverage}}", String.valueOf(coverage))
-                    .replace("{{animationSpeedMs}}", String.valueOf(animationSpeedMs))
-                    .replace("{{color}}", color);
         }
     }
 }

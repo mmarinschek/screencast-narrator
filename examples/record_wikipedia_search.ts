@@ -16,20 +16,13 @@ import { chromium } from "playwright";
 import { Storyboard } from "../api/typescript-client/src/index";
 
 async function record(outputDir: string): Promise<void> {
-  const videosDir = `${outputDir}/videos`;
-
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },
-    recordVideo: {
-      dir: videosDir,
-      size: { width: 1280, height: 720 },
-    },
   });
   const page = await context.newPage();
 
-  const storyboard = new Storyboard(outputDir, page, { syncFrameStyle: { debugOverlay: true } });
-  await storyboard.init();
+  const storyboard = new Storyboard(outputDir, page, { debugOverlay: true });
 
   // --- Step 1: Navigate to Wikipedia ---
   await storyboard.narrate(

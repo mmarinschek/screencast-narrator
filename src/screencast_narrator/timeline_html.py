@@ -5,18 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from screencast_narrator.freeze_frames import (
-    FreezeFrame,
-    GapCut,
-    adjust_for_cuts,
-    adjust_timestamp,
-)
-
 PX_PER_SECOND = 100.0
 TIME_COL_WIDTH = 80
 NARR_LANE_WIDTH = 320
-ACTION_COL_WIDTH = 260
-FREEZE_COL_WIDTH = 40
 HEADER_HEIGHT = 32
 
 COLORS = [
@@ -87,8 +78,6 @@ _BASE_CSS = """
   .band-body {{ position: relative; height: {total_height}px; }}
   .time-band {{ width: {time_width}px; }}
   .time-band .band-body {{ background: #f8f9fa; border-right: 2px solid #cbd5e1; }}
-  .freeze-band {{ width: {freeze_width}px; }}
-  .freeze-band .band-body {{ background: #fefce8; border-right: 2px solid #cbd5e1; }}
   .narr-band .band-body {{ background: #fafbfc; border-right: 2px solid #cbd5e1; }}
 
   .tick-line {{ position: absolute; left: 0; right: 0; border-top: 1px solid #e5e7eb; z-index: 1; }}
@@ -98,17 +87,6 @@ _BASE_CSS = """
     transform: translateY(-50%); white-space: nowrap; font-variant-numeric: tabular-nums;
   }}
   .tick-label.major {{ color: #334155; font-weight: 700; font-size: 11px; }}
-
-  .freeze-block {{
-    position: absolute; left: 4px; right: 4px;
-    background: repeating-linear-gradient(45deg, #fbbf24, #fbbf24 3px, #fef3c7 3px, #fef3c7 6px);
-    border-radius: 2px; z-index: 2; min-height: 2px; border: 1px solid #f59e0b;
-  }}
-  .gap-cut-block {{
-    position: absolute; left: 4px; right: 4px;
-    background: repeating-linear-gradient(-45deg, #f87171, #f87171 3px, #fecaca 3px, #fecaca 6px);
-    border-radius: 2px; z-index: 2; min-height: 2px; border: 1px solid #ef4444;
-  }}
 
   .narr-block {{
     position: absolute; border-radius: 4px; padding: 5px 8px;
@@ -154,7 +132,6 @@ def _render_narrations_band(
     lines: list[str],
     narration_entries: list[dict],
     max_ms: int,
-    show_audio: bool = False,
 ) -> None:
     lines.append(f'<div class="band narr-band" style="width:{NARR_LANE_WIDTH}px;">')
     lines.append(f'  <div class="band-header">Narrations ({len(narration_entries)})</div>')
@@ -171,22 +148,17 @@ def _render_narrations_band(
         est_text_h = 16 + (len(text) // 40) * 14 + 14
         block_h = max(_ms_to_y(end) - y, est_text_h)
 
-        if show_audio and audio_dur > 0:
-            audio_h = max(_ms_to_y(start + audio_dur) - y, 4)
-            block_h = max(block_h, audio_h)
-        else:
-            audio_h = 0
+        audio_h = max(_ms_to_y(start + audio_dur) - y, 4) if audio_dur > 0 else 0
+        block_h = max(block_h, audio_h)
 
         bg = _hex_to_rgba(color, 0.1)
         dur_label = f"{(end - start) / 1000.0:.1f}s"
-        time_label = f"{_fmt_time(start)} \u2192 {_fmt_time(end)} ({dur_label})"
-        if show_audio:
-            time_label += f"  audio {audio_dur / 1000.0:.1f}s"
+        time_label = f"{_fmt_time(start)} \u2192 {_fmt_time(end)} ({dur_label})  audio {audio_dur / 1000.0:.1f}s"
 
         lines.append(
             f'    <div class="narr-block" style="top:{y}px;height:{block_h}px;left:4px;width:{NARR_LANE_WIDTH - 8}px;background:{bg};border-color:{color};">'
         )
-        if show_audio and audio_h > 0:
+        if audio_h > 0:
             lines.append(
                 f'      <div class="audio-bar" style="top:0;height:{audio_h}px;background:{_hex_to_rgba(color, 0.25)};"></div>'
             )
@@ -199,25 +171,9 @@ def _render_narrations_band(
 
 def generate_timeline_html(target_dir: Path) -> Path:
     timeline = _read_timeline(target_dir)
-
     narrations = timeline["narrations"]
-    freeze_frames = [FreezeFrame(ff["timeMs"], ff["durationMs"]) for ff in timeline["freezeFrames"]]
-    gap_cuts = [GapCut(gc["startMs"], gc["endMs"]) for gc in timeline["gapCuts"]]
 
-    total_freeze_ms = sum(ff.duration_ms for ff in freeze_frames)
-    total_cut_ms = sum(gc.end_ms - gc.start_ms for gc in gap_cuts)
-
-    orig_entries = [
-        {
-            "startMs": n["bracketStartMs"],
-            "endMs": n["bracketEndMs"],
-            "text": n["text"],
-            "audioDurationMs": n["audioDurationMs"],
-        }
-        for n in narrations
-    ]
-
-    adj_entries = [
+    entries = [
         {
             "startMs": n["timestampMs"],
             "endMs": n["timestampMs"] + n["audioDurationMs"],
@@ -227,93 +183,27 @@ def generate_timeline_html(target_dir: Path) -> Path:
         for n in narrations
     ]
 
-    final_entries = []
-    for n in narrations:
-        final_start = adjust_for_cuts(n["timestampMs"], gap_cuts)
-        final_entries.append(
-            {
-                "startMs": final_start,
-                "endMs": final_start + n["audioDurationMs"],
-                "text": n["text"],
-                "audioDurationMs": n["audioDurationMs"],
-            }
-        )
-
-    orig_max = max((e["endMs"] for e in orig_entries), default=0)
-    adj_max = max((e["endMs"] for e in adj_entries), default=0)
-    final_max = max((e["endMs"] for e in final_entries), default=0)
-    global_max = max(orig_max, adj_max, final_max) + 2000
-
-    total_height = _ms_to_y(global_max) + 60
+    max_ms = max((e["endMs"] for e in entries), default=0) + 2000
+    total_height = _ms_to_y(max_ms) + 60
 
     css = _BASE_CSS.format(
         header_height=HEADER_HEIGHT,
         total_height=total_height,
         time_width=TIME_COL_WIDTH,
-        freeze_width=FREEZE_COL_WIDTH,
     )
 
     lines: list[str] = []
     lines.append('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">')
-    lines.append(
-        f"<title>Screencast — Timeline</title><style>{css}\n.column-sep {{ border-left: 4px solid #1e293b; }}</style></head><body>"
-    )
+    lines.append(f"<title>Screencast — Timeline</title><style>{css}</style></head><body>")
     lines.append("<h1>Screencast &mdash; Timeline</h1>")
-    lines.append(
-        f'<p class="subtitle">{len(narrations)} narrations &middot; '
-        f"{len(freeze_frames)} freeze-frames ({_fmt_time(total_freeze_ms)}) &middot; "
-        f"{len(gap_cuts)} gap cuts ({_fmt_time(total_cut_ms)})</p>"
-    )
+    lines.append(f'<p class="subtitle">{len(narrations)} narrations</p>')
     lines.append('<p class="legend">')
-    lines.append(
-        '  <span><span class="swatch" style="background:repeating-linear-gradient(45deg,#fbbf24,#fbbf24 2px,#fef3c7 2px,#fef3c7 4px);border:1px solid #f59e0b;"></span>Freeze frame</span>'
-    )
-    lines.append(
-        '  <span><span class="swatch" style="background:repeating-linear-gradient(-45deg,#f87171,#f87171 2px,#fecaca 2px,#fecaca 4px);border:1px solid #ef4444;"></span>Gap cut</span>'
-    )
     lines.append('  <span><span class="swatch" style="background:rgba(8,145,178,0.25);"></span>Audio playing</span>')
     lines.append("</p>")
     lines.append('<div class="timeline-container">')
 
-    # Column 1: Original bracket positions
-    _render_time_ruler(lines, global_max)
-    _render_narrations_band(lines, orig_entries, global_max, show_audio=True)
-
-    # Column 2: After freeze frames
-    lines.append(
-        '<div class="band column-sep" style="width:4px;"><div class="band-header" style="background:#0f172a;"></div><div class="band-body"></div></div>'
-    )
-    _render_time_ruler(lines, global_max, step=1000)
-
-    lines.append('<div class="band freeze-band">')
-    lines.append('  <div class="band-header">FF</div>')
-    lines.append('  <div class="band-body">')
-    for ff in freeze_frames:
-        adj_time = adjust_timestamp(ff.time_ms, freeze_frames)
-        y = _ms_to_y(adj_time)
-        h = max(_ms_to_y(adj_time + ff.duration_ms) - y, 3)
-        lines.append(f'    <div class="freeze-block" style="top:{y}px;height:{h}px;"></div>')
-    lines.append("  </div>\n</div>")
-
-    _render_narrations_band(lines, adj_entries, global_max, show_audio=True)
-
-    # Column 3: After gap cuts (if any)
-    if gap_cuts:
-        lines.append(
-            '<div class="band column-sep" style="width:4px;"><div class="band-header" style="background:#0f172a;"></div><div class="band-body"></div></div>'
-        )
-        _render_time_ruler(lines, global_max, step=1000)
-
-        lines.append('<div class="band freeze-band">')
-        lines.append('  <div class="band-header">GC</div>')
-        lines.append('  <div class="band-body">')
-        for gc in gap_cuts:
-            y = _ms_to_y(gc.start_ms)
-            h = max(_ms_to_y(gc.end_ms) - y, 3)
-            lines.append(f'    <div class="gap-cut-block" style="top:{y}px;height:{h}px;"></div>')
-        lines.append("  </div>\n</div>")
-
-        _render_narrations_band(lines, final_entries, global_max, show_audio=True)
+    _render_time_ruler(lines, max_ms)
+    _render_narrations_band(lines, entries, max_ms)
 
     lines.append("</div></body></html>")
 

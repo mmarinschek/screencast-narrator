@@ -11,24 +11,20 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from screencast_narrator_client import HighlightStyle, Storyboard, SyncFrameStyle
+from screencast_narrator_client import HighlightStyle, Storyboard
 
 
 def record(output_dir: Path, html_path: Path, color: str, animation_speed_ms: int) -> None:
-    videos_dir = output_dir / "videos"
-    videos_dir.mkdir(parents=True, exist_ok=True)
     style = HighlightStyle(color=color, animation_speed_ms=animation_speed_ms)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
             viewport={"width": 1280, "height": 720},
-            record_video_dir=str(videos_dir),
-            record_video_size={"width": 1280, "height": 720},
         )
         page = context.new_page()
 
-        storyboard = Storyboard(output_dir, page, highlight_style=style, sync_frame_style=SyncFrameStyle(debug_overlay=True))
+        storyboard = Storyboard(output_dir, page, highlight_style=style, debug_overlay=True)
 
         page.goto(f"file://{html_path}", wait_until="load")
         page.wait_for_selector("#target", state="visible")

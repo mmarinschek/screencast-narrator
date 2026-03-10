@@ -31,7 +31,6 @@ export interface StoryboardSchema {
   narrations: Narration[];
   options?: {
     highlightStyle?: HighlightStyle;
-    syncFrameStyle?: SyncFrameStyle;
     /**
      * Named voice identities mapping alias to language-specific TTS voices (e.g. {"nathaly": {"en": "bf_alice", "de": "de_natasha"}})
      */
@@ -40,6 +39,14 @@ export interface StoryboardSchema {
         [k: string]: string;
       };
     };
+    /**
+     * Show debug overlay in the final video
+     */
+    debugOverlay?: boolean;
+    /**
+     * Font size for debug overlay text
+     */
+    fontSize?: number;
   };
 }
 /**
@@ -57,6 +64,10 @@ export interface Narration {
     [k: string]: string;
   };
   screenActions?: ScreenAction[];
+  /**
+   * Relative path to the per-narration video file (CDP recording mode)
+   */
+  videoFile?: string;
 }
 /**
  * This interface was referenced by `StoryboardSchema`'s JSON-Schema
@@ -123,28 +134,4 @@ export interface HighlightStyle {
    * How much of the rectangle perimeter is drawn (0-1)
    */
   coverage?: number;
-}
-/**
- * User-customizable sync frame timing and overlay settings. All fields are optional — unset fields inherit from the shared config defaults.
- *
- * This interface was referenced by `StoryboardSchema`'s JSON-Schema
- * via the `definition` "syncFrameStyle".
- */
-export interface SyncFrameStyle {
-  /**
-   * How long the green QR overlay is shown per frame (default 160ms = ~4 frames at 25fps)
-   */
-  displayDurationMs?: number;
-  /**
-   * Gap after removing the overlay before the next action (default 80ms)
-   */
-  postRemovalGapMs?: number;
-  /**
-   * Show narration text as subtitle overlay during recording
-   */
-  debugOverlay?: boolean;
-  /**
-   * Font size for the debug subtitle overlay (default 24)
-   */
-  fontSize?: number;
 }

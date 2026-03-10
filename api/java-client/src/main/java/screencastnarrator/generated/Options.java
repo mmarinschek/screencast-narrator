@@ -10,8 +10,9 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({
     "highlightStyle",
-    "syncFrameStyle",
-    "voices"
+    "voices",
+    "debugOverlay",
+    "fontSize"
 })
 @Generated("jsonschema2pojo")
 public class Options {
@@ -24,19 +25,26 @@ public class Options {
     @JsonPropertyDescription("User-customizable highlight appearance. All fields are optional \u2014 unset fields inherit from the shared config defaults.")
     private HighlightStyle highlightStyle;
     /**
-     * User-customizable sync frame timing and overlay settings. All fields are optional — unset fields inherit from the shared config defaults.
-     * 
-     */
-    @JsonProperty("syncFrameStyle")
-    @JsonPropertyDescription("User-customizable sync frame timing and overlay settings. All fields are optional \u2014 unset fields inherit from the shared config defaults.")
-    private SyncFrameStyle syncFrameStyle;
-    /**
      * Named voice identities mapping alias to language-specific TTS voices (e.g. {"nathaly": {"en": "bf_alice", "de": "de_natasha"}})
      * 
      */
     @JsonProperty("voices")
     @JsonPropertyDescription("Named voice identities mapping alias to language-specific TTS voices (e.g. {\"nathaly\": {\"en\": \"bf_alice\", \"de\": \"de_natasha\"}})")
     private Voices voices;
+    /**
+     * Show debug overlay in the final video
+     * 
+     */
+    @JsonProperty("debugOverlay")
+    @JsonPropertyDescription("Show debug overlay in the final video")
+    private Boolean debugOverlay;
+    /**
+     * Font size for debug overlay text
+     * 
+     */
+    @JsonProperty("fontSize")
+    @JsonPropertyDescription("Font size for debug overlay text")
+    private Integer fontSize;
 
     /**
      * No args constructor for use in serialization
@@ -47,14 +55,19 @@ public class Options {
 
     /**
      * 
+     * @param debugOverlay
+     *     Show debug overlay in the final video.
      * @param voices
      *     Named voice identities mapping alias to language-specific TTS voices (e.g. {"nathaly": {"en": "bf_alice", "de": "de_natasha"}}).
+     * @param fontSize
+     *     Font size for debug overlay text.
      */
-    public Options(HighlightStyle highlightStyle, SyncFrameStyle syncFrameStyle, Voices voices) {
+    public Options(HighlightStyle highlightStyle, Voices voices, Boolean debugOverlay, Integer fontSize) {
         super();
         this.highlightStyle = highlightStyle;
-        this.syncFrameStyle = syncFrameStyle;
         this.voices = voices;
+        this.debugOverlay = debugOverlay;
+        this.fontSize = fontSize;
     }
 
     /**
@@ -76,24 +89,6 @@ public class Options {
     }
 
     /**
-     * User-customizable sync frame timing and overlay settings. All fields are optional — unset fields inherit from the shared config defaults.
-     * 
-     */
-    @JsonProperty("syncFrameStyle")
-    public SyncFrameStyle getSyncFrameStyle() {
-        return syncFrameStyle;
-    }
-
-    /**
-     * User-customizable sync frame timing and overlay settings. All fields are optional — unset fields inherit from the shared config defaults.
-     * 
-     */
-    @JsonProperty("syncFrameStyle")
-    public void setSyncFrameStyle(SyncFrameStyle syncFrameStyle) {
-        this.syncFrameStyle = syncFrameStyle;
-    }
-
-    /**
      * Named voice identities mapping alias to language-specific TTS voices (e.g. {"nathaly": {"en": "bf_alice", "de": "de_natasha"}})
      * 
      */
@@ -111,6 +106,42 @@ public class Options {
         this.voices = voices;
     }
 
+    /**
+     * Show debug overlay in the final video
+     * 
+     */
+    @JsonProperty("debugOverlay")
+    public Boolean getDebugOverlay() {
+        return debugOverlay;
+    }
+
+    /**
+     * Show debug overlay in the final video
+     * 
+     */
+    @JsonProperty("debugOverlay")
+    public void setDebugOverlay(Boolean debugOverlay) {
+        this.debugOverlay = debugOverlay;
+    }
+
+    /**
+     * Font size for debug overlay text
+     * 
+     */
+    @JsonProperty("fontSize")
+    public Integer getFontSize() {
+        return fontSize;
+    }
+
+    /**
+     * Font size for debug overlay text
+     * 
+     */
+    @JsonProperty("fontSize")
+    public void setFontSize(Integer fontSize) {
+        this.fontSize = fontSize;
+    }
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -119,13 +150,17 @@ public class Options {
         sb.append('=');
         sb.append(((this.highlightStyle == null)?"<null>":this.highlightStyle));
         sb.append(',');
-        sb.append("syncFrameStyle");
-        sb.append('=');
-        sb.append(((this.syncFrameStyle == null)?"<null>":this.syncFrameStyle));
-        sb.append(',');
         sb.append("voices");
         sb.append('=');
         sb.append(((this.voices == null)?"<null>":this.voices));
+        sb.append(',');
+        sb.append("debugOverlay");
+        sb.append('=');
+        sb.append(((this.debugOverlay == null)?"<null>":this.debugOverlay));
+        sb.append(',');
+        sb.append("fontSize");
+        sb.append('=');
+        sb.append(((this.fontSize == null)?"<null>":this.fontSize));
         sb.append(',');
         if (sb.charAt((sb.length()- 1)) == ',') {
             sb.setCharAt((sb.length()- 1), ']');
@@ -138,8 +173,9 @@ public class Options {
     @Override
     public int hashCode() {
         int result = 1;
-        result = ((result* 31)+((this.syncFrameStyle == null)? 0 :this.syncFrameStyle.hashCode()));
         result = ((result* 31)+((this.voices == null)? 0 :this.voices.hashCode()));
+        result = ((result* 31)+((this.fontSize == null)? 0 :this.fontSize.hashCode()));
+        result = ((result* 31)+((this.debugOverlay == null)? 0 :this.debugOverlay.hashCode()));
         result = ((result* 31)+((this.highlightStyle == null)? 0 :this.highlightStyle.hashCode()));
         return result;
     }
@@ -153,7 +189,7 @@ public class Options {
             return false;
         }
         Options rhs = ((Options) other);
-        return ((((this.syncFrameStyle == rhs.syncFrameStyle)||((this.syncFrameStyle!= null)&&this.syncFrameStyle.equals(rhs.syncFrameStyle)))&&((this.voices == rhs.voices)||((this.voices!= null)&&this.voices.equals(rhs.voices))))&&((this.highlightStyle == rhs.highlightStyle)||((this.highlightStyle!= null)&&this.highlightStyle.equals(rhs.highlightStyle))));
+        return (((((this.voices == rhs.voices)||((this.voices!= null)&&this.voices.equals(rhs.voices)))&&((this.fontSize == rhs.fontSize)||((this.fontSize!= null)&&this.fontSize.equals(rhs.fontSize))))&&((this.debugOverlay == rhs.debugOverlay)||((this.debugOverlay!= null)&&this.debugOverlay.equals(rhs.debugOverlay))))&&((this.highlightStyle == rhs.highlightStyle)||((this.highlightStyle!= null)&&this.highlightStyle.equals(rhs.highlightStyle))));
     }
 
 }

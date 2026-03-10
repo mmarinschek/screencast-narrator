@@ -7,19 +7,19 @@ public class Highlight {
 
     private Highlight() {}
 
-    public static void drawHighlight(Page page, Locator locator, SharedConfig.HighlightConfig config) {
-        locator.evaluate(config.scrollJs());
-        page.evaluate(config.scrollWaitJs());
+    public static void drawHighlight(Page page, Locator locator, SharedConfig config) {
+        locator.evaluate(config.highlight().getScrollJs());
+        page.evaluate(config.highlight().getScrollWaitJs());
         locator.evaluate(config.resolvedDrawJs());
-        page.waitForTimeout(config.animationSpeedMs() + config.drawWaitMs());
+        page.waitForTimeout(config.highlight().getAnimationSpeedMs() + config.highlight().getDrawWaitMs());
     }
 
-    public static void removeHighlight(Page page, SharedConfig.HighlightConfig config) {
-        page.evaluate(config.removeJs());
-        page.waitForTimeout(config.removeWaitMs());
+    public static void removeHighlight(Page page, SharedConfig config) {
+        page.evaluate(config.highlight().getRemoveJs());
+        page.waitForTimeout(config.highlight().getRemoveWaitMs());
     }
 
-    public static void highlight(Page page, Locator locator, SharedConfig.HighlightConfig config) {
+    public static void highlight(Page page, Locator locator, SharedConfig config) {
         drawHighlight(page, locator, config);
         removeHighlight(page, config);
     }

@@ -2,19 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "description": "Schema for timeline.json — produced by the merge pipeline with computed timing data.",
   "type": "object",
-  "required": ["narrations", "freezeFrames", "gapCuts"],
+  "required": ["narrations"],
   "properties": {
     "narrations": {
       "type": "array",
       "items": { "$ref": "#/definitions/timelineNarration" }
-    },
-    "freezeFrames": {
-      "type": "array",
-      "items": { "$ref": "#/definitions/freezeFrame" }
-    },
-    "gapCuts": {
-      "type": "array",
-      "items": { "$ref": "#/definitions/gapCut" }
     }
   },
   "additionalProperties": false,
@@ -44,24 +36,6 @@
             "additionalProperties": false
           }
         }
-      },
-      "additionalProperties": false
-    },
-    "freezeFrame": {
-      "type": "object",
-      "required": ["timeMs", "durationMs"],
-      "properties": {
-        "timeMs": { "type": "integer", "minimum": 0 },
-        "durationMs": { "type": "integer", "minimum": 0 }
-      },
-      "additionalProperties": false
-    },
-    "gapCut": {
-      "type": "object",
-      "required": ["startMs", "endMs"],
-      "properties": {
-        "startMs": { "type": "integer", "minimum": 0 },
-        "endMs": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": false
     }

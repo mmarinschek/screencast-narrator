@@ -15,7 +15,8 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder;
     "text",
     "voice",
     "translations",
-    "screenActions"
+    "screenActions",
+    "videoFile"
 })
 @Generated("jsonschema2pojo")
 public class Narration {
@@ -40,6 +41,13 @@ public class Narration {
     private Translations translations;
     @JsonProperty("screenActions")
     private List<ScreenAction> screenActions = new ArrayList<ScreenAction>();
+    /**
+     * Relative path to the per-narration video file (CDP recording mode)
+     * 
+     */
+    @JsonProperty("videoFile")
+    @JsonPropertyDescription("Relative path to the per-narration video file (CDP recording mode)")
+    private String videoFile;
 
     /**
      * No args constructor for use in serialization
@@ -52,14 +60,17 @@ public class Narration {
      * 
      * @param translations
      *     Translations keyed by language code.
+     * @param videoFile
+     *     Relative path to the per-narration video file (CDP recording mode).
      */
-    public Narration(Integer narrationId, String text, String voice, Translations translations, List<ScreenAction> screenActions) {
+    public Narration(Integer narrationId, String text, String voice, Translations translations, List<ScreenAction> screenActions, String videoFile) {
         super();
         this.narrationId = narrationId;
         this.text = text;
         this.voice = voice;
         this.translations = translations;
         this.screenActions = screenActions;
+        this.videoFile = videoFile;
     }
 
     /**
@@ -130,6 +141,24 @@ public class Narration {
         this.screenActions = screenActions;
     }
 
+    /**
+     * Relative path to the per-narration video file (CDP recording mode)
+     * 
+     */
+    @JsonProperty("videoFile")
+    public String getVideoFile() {
+        return videoFile;
+    }
+
+    /**
+     * Relative path to the per-narration video file (CDP recording mode)
+     * 
+     */
+    @JsonProperty("videoFile")
+    public void setVideoFile(String videoFile) {
+        this.videoFile = videoFile;
+    }
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -154,6 +183,10 @@ public class Narration {
         sb.append('=');
         sb.append(((this.screenActions == null)?"<null>":this.screenActions));
         sb.append(',');
+        sb.append("videoFile");
+        sb.append('=');
+        sb.append(((this.videoFile == null)?"<null>":this.videoFile));
+        sb.append(',');
         if (sb.charAt((sb.length()- 1)) == ',') {
             sb.setCharAt((sb.length()- 1), ']');
         } else {
@@ -168,6 +201,7 @@ public class Narration {
         result = ((result* 31)+((this.voice == null)? 0 :this.voice.hashCode()));
         result = ((result* 31)+((this.text == null)? 0 :this.text.hashCode()));
         result = ((result* 31)+((this.screenActions == null)? 0 :this.screenActions.hashCode()));
+        result = ((result* 31)+((this.videoFile == null)? 0 :this.videoFile.hashCode()));
         result = ((result* 31)+((this.translations == null)? 0 :this.translations.hashCode()));
         result = ((result* 31)+((this.narrationId == null)? 0 :this.narrationId.hashCode()));
         return result;
@@ -182,7 +216,7 @@ public class Narration {
             return false;
         }
         Narration rhs = ((Narration) other);
-        return ((((((this.voice == rhs.voice)||((this.voice!= null)&&this.voice.equals(rhs.voice)))&&((this.text == rhs.text)||((this.text!= null)&&this.text.equals(rhs.text))))&&((this.screenActions == rhs.screenActions)||((this.screenActions!= null)&&this.screenActions.equals(rhs.screenActions))))&&((this.translations == rhs.translations)||((this.translations!= null)&&this.translations.equals(rhs.translations))))&&((this.narrationId == rhs.narrationId)||((this.narrationId!= null)&&this.narrationId.equals(rhs.narrationId))));
+        return (((((((this.voice == rhs.voice)||((this.voice!= null)&&this.voice.equals(rhs.voice)))&&((this.text == rhs.text)||((this.text!= null)&&this.text.equals(rhs.text))))&&((this.screenActions == rhs.screenActions)||((this.screenActions!= null)&&this.screenActions.equals(rhs.screenActions))))&&((this.videoFile == rhs.videoFile)||((this.videoFile!= null)&&this.videoFile.equals(rhs.videoFile))))&&((this.translations == rhs.translations)||((this.translations!= null)&&this.translations.equals(rhs.translations))))&&((this.narrationId == rhs.narrationId)||((this.narrationId!= null)&&this.narrationId.equals(rhs.narrationId))));
     }
 
 }

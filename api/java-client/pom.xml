@@ -7,7 +7,7 @@
 
     <groupId>com.github.mmarinschek.screencast-narrator</groupId>
     <artifactId>java-client</artifactId>
-    <version>0.3.3</version>
+    <version>0.4.0</version>
 
     <name>Screencast Narrator Java Client</name>
     <description>Java client for screencast-narrator: record narrated screencasts from browser automation</description>
@@ -49,9 +49,9 @@
             <version>1.49.0</version>
         </dependency>
         <dependency>
-            <groupId>com.google.zxing</groupId>
-            <artifactId>core</artifactId>
-            <version>3.5.3</version>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.11.0</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -62,6 +62,15 @@
     </dependencies>
 
 <build>
+        <resources>
+            <resource>
+                <directory>${project.basedir}/..</directory>
+                <includes>
+                    <include>common/config.json</include>
+                    <include>common/js/*.js</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.jsonschema2pojo</groupId>
@@ -71,6 +80,7 @@
                     <sourceDirectory>${project.basedir}/../common</sourceDirectory>
                     <includes>
                         <include>storyboard-schema.json</include>
+                        <include>config-schema.json</include>
                     </includes>
                     <targetPackage>screencastnarrator.generated</targetPackage>
                     <outputDirectory>${project.basedir}/src/main/java</outputDirectory>

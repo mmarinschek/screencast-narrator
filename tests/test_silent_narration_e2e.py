@@ -25,15 +25,11 @@ from screencast_narrator.storyboard import ScreenActionType, Storyboard
 def test_silent_title_followed_by_narration(tmp_path: Path) -> None:
     """Silent title narration + regular narration → full pipeline produces valid MP4."""
     output_dir = tmp_path / "silent-narration-test"
-    videos_dir = output_dir / "videos"
-    videos_dir.mkdir(parents=True)
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
             viewport={"width": 1280, "height": 720},
-            record_video_dir=str(videos_dir),
-            record_video_size={"width": 1280, "height": 720},
         )
         page = context.new_page()
 
@@ -67,8 +63,9 @@ def test_silent_title_followed_by_narration(tmp_path: Path) -> None:
     assert data["narrations"][0]["screenActions"][0]["type"] == "title"
     assert data["narrations"][1]["text"] == "This is a narrated screencast. We are looking at the example.com page."
 
-    webm_files = list(videos_dir.glob("*.webm"))
-    assert len(webm_files) > 0
+    videos_dir = output_dir / "videos"
+    mp4_files = list(videos_dir.glob("narration-*.mp4"))
+    assert len(mp4_files) > 0, "No per-narration MP4 videos found"
 
     process(output_dir)
 

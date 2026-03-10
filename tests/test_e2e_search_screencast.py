@@ -38,7 +38,7 @@ playwright = pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright
 
 from screencast_narrator.merge import process
-from screencast_narrator_client import Storyboard, SyncFrameStyle
+from screencast_narrator_client import Storyboard
 from wikipedia_search_recording import record_wikipedia_search
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -59,18 +59,13 @@ def _can_run_java() -> bool:
 
 
 def _record_with_python(output_dir: Path) -> None:
-    videos_dir = output_dir / "videos"
-    videos_dir.mkdir(parents=True, exist_ok=True)
-
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
             viewport={"width": 1280, "height": 720},
-            record_video_dir=str(videos_dir),
-            record_video_size={"width": 1280, "height": 720},
         )
         page = context.new_page()
-        sb = Storyboard(output_dir, page, sync_frame_style=SyncFrameStyle(debug_overlay=True))
+        sb = Storyboard(output_dir, page, debug_overlay=True)
 
         record_wikipedia_search(sb, page)
         sb.done()
@@ -141,8 +136,8 @@ def test_search_screencast(tmp_path: Path) -> None:
     assert storyboard_json.exists(), f"storyboard.json was not created by {language} recorder"
 
     videos_dir = output_dir / "videos"
-    webm_files = list(videos_dir.glob("*.webm"))
-    assert len(webm_files) > 0, f"No .webm video found after {language} recording"
+    mp4_files = list(videos_dir.glob("narration-*.mp4"))
+    assert len(mp4_files) > 0, f"No per-narration MP4 videos found after {language} recording"
 
     # Run the merge pipeline
     process(output_dir)

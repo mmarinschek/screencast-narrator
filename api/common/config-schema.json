@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Schema for config.json — shared configuration for all clients.",
+  "type": "object",
+  "required": ["recording", "highlight"],
+  "properties": {
+    "recording": { "$ref": "#/definitions/recordingConfig" },
+    "highlight": { "$ref": "#/definitions/highlightConfig" }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "recordingConfig": {
+      "type": "object",
+      "description": "CDP video recording settings shared across all clients.",
+      "required": ["fps", "jpegQuality", "minFrames", "minFrameWaitMs", "stopSettleMs", "codec", "preset", "crf", "pixelFormat"],
+      "properties": {
+        "fps": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Target frames per second for video output"
+        },
+        "jpegQuality": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "description": "JPEG quality for CDP screencast frames"
+        },
+        "minFrames": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum frames to capture before considering recording started"
+        },
+        "minFrameWaitMs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Polling interval in ms when waiting for minimum frames"
+        },
+        "stopSettleMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Settle time in ms after stopping the screencast before closing ffmpeg"
+        },
+        "codec": {
+          "type": "string",
+          "enum": ["libx264", "libx265", "libvpx-vp9"],
+          "description": "Video codec for ffmpeg output"
+        },
+        "preset": {
+          "type": "string",
+          "enum": ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"],
+          "description": "Encoding speed preset (faster = larger file, slower = smaller file)"
+        },
+        "crf": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 51,
+          "description": "Constant rate factor (0 = lossless, 18 = visually lossless, 23 = default, 51 = worst)"
+        },
+        "pixelFormat": {
+          "type": "string",
+          "enum": ["yuv420p", "yuv444p"],
+          "description": "Pixel format for video output"
+        }
+      },
+      "additionalProperties": false
+    },
+    "highlightConfig": {
+      "type": "object",
+      "description": "Highlight drawing defaults loaded at runtime.",
+      "required": [
+        "scrollWaitMs", "drawWaitMs", "removeWaitMs", "color", "padding",
+        "animationSpeedMs", "lineWidthMin", "lineWidthMax", "opacity",
+        "segments", "coverage", "scrollJs", "scrollWaitJs", "drawJs", "removeJs"
+      ],
+      "properties": {
+        "scrollWaitMs": { "type": "integer", "minimum": 0 },
+        "drawWaitMs": { "type": "integer", "minimum": 0 },
+        "removeWaitMs": { "type": "integer", "minimum": 0 },
+        "color": { "type": "string" },
+        "padding": { "type": "integer", "minimum": 0 },
+        "animationSpeedMs": { "type": "integer", "minimum": 0 },
+        "lineWidthMin": { "type": "integer", "minimum": 0 },
+        "lineWidthMax": { "type": "integer", "minimum": 0 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "segments": { "type": "integer", "minimum": 1 },
+        "coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "scrollJs": { "type": "string", "description": "JS file path or inline code for scrolling element into view" },
+        "scrollWaitJs": { "type": "string", "description": "JS file path or inline code for waiting after scroll" },
+        "drawJs": { "type": "string", "description": "JS file path or inline code for drawing the highlight" },
+        "removeJs": { "type": "string", "description": "JS file path or inline code for removing the highlight" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -200,10 +200,10 @@ def test_highlight_visible_in_screencast(tmp_path: Path) -> None:
     assert has_highlight, f"No highlight found in storyboard narration: {narration}"
 
     videos_dir = output_dir / "videos"
-    webm_files = list(videos_dir.glob("*.webm"))
-    assert len(webm_files) == 1
+    mp4_files = sorted(videos_dir.glob("narration-*.mp4"))
+    assert len(mp4_files) >= 1, f"No per-narration MP4 videos found after {language} recording"
 
-    source_frames = _extract_all_frames(webm_files[0], tmp_path / "source_frames")
+    source_frames = _extract_all_frames(mp4_files[0], tmp_path / "source_frames")
     source_curve = _collect_highlight_curve(source_frames)
     _assert_highlight_animation(source_curve, f"source[{language}] (color={color}, speed={animation_speed}ms)")
 
@@ -214,10 +214,6 @@ def test_highlight_visible_in_screencast(tmp_path: Path) -> None:
 
     timeline = json.loads((output_dir / "timeline.json").read_text(encoding="utf-8"))
     assert len(timeline["narrations"]) == 1
-    assert any(
-        a["type"] == "highlight"
-        for a in timeline["narrations"][0].get("screenActions", [])
-    )
 
     output_frames = _extract_all_frames(output_mp4, tmp_path / "output_frames")
     assert len(output_frames) >= 5

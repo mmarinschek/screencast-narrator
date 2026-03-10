@@ -1,4 +1,4 @@
-"""Debug overlay: generates drawtext filters and text files for pipeline visualization."""
+"""Debug overlay: generates drawtext filters and QR timestamp video for pipeline visualization."""
 
 from __future__ import annotations
 
@@ -9,21 +9,10 @@ import qrcode
 from PIL import Image
 
 from screencast_narrator.ffmpeg import exec_ffmpeg, secs
-from screencast_narrator.freeze_frames import (
-    FreezeFrame,
-    GapCut,
-    NarrationSegment,
-    adjust_for_cuts,
-    adjust_timestamp,
-)
-from screencast_narrator.shared_config import load_shared_config
+from screencast_narrator.narration_segment import NarrationSegment
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
-    ScreenAction,
-    ScreenActionType,
 )
-
-_SM = load_shared_config().sync_markers
 
 
 def _find_font() -> str | None:
@@ -79,9 +68,6 @@ def generate_overlay_filter(
     narrations: list[NarrationSegment],
     final_timestamps: list[int],
     storyboard: StoryboardModel,
-    sync_positions: dict[str, float],
-    freeze_frames: list[FreezeFrame],
-    gap_cuts: list[GapCut],
     temp_dir: Path,
     font_size: int = 24,
 ) -> OverlayResult:
@@ -125,66 +111,6 @@ def generate_overlay_filter(
         if i < len(narrations) - 1:
             parts.append(_dt_file(f"NEXT {_narration_label(i + 1)}", "10", top + 3 * lh, "gray", rng))
 
-    for narration in storyboard.narrations:
-        resolved_actions: list[tuple[ScreenAction, int, int]] = []
-        for action in narration.screen_actions or []:
-            if action.type == ScreenActionType.highlight:
-                start_key = _SM.highlight_start(action.screen_action_id)
-                end_key = _SM.highlight_end(action.screen_action_id)
-            else:
-                start_key = _SM.action_start(action.screen_action_id)
-                end_key = _SM.action_end(action.screen_action_id)
-            if start_key not in sync_positions or end_key not in sync_positions:
-                continue
-            s = _to_final_ms(sync_positions[start_key], freeze_frames, gap_cuts)
-            e = _to_final_ms(sync_positions[end_key], freeze_frames, gap_cuts)
-            if e > s:
-                resolved_actions.append((action, s, e))
-
-        for j, (action, start_ms, end_ms) in enumerate(resolved_actions):
-            aid = action.screen_action_id
-            desc = (action.description or f"Action {aid}")[:50]
-            timing_str = action.timing.value if action.timing else "casted"
-            rng = f"{start_ms / 1000.0:.3f},{end_ms / 1000.0:.3f}"
-
-            if j > 0:
-                prev_a, prev_s, prev_e = resolved_actions[j - 1]
-                prev_desc = (prev_a.description or f"Action {prev_a.screen_action_id}")[:45]
-                prev_label = f"{_fmt_ms(prev_s)}-{_fmt_ms(prev_e)} A{prev_a.screen_action_id}: {prev_desc}"
-                parts.append(_dt_file(f"PREV {prev_label}", "10", top + 5 * lh, "gray", rng))
-
-            time_label = f"{_fmt_ms(start_ms)}-{_fmt_ms(end_ms)}"
-            freeze_tag = " [freeze blocked]" if timing_str != "elastic" else ""
-            parts.append(_dt_file(f"NOW  {time_label} A{aid}: {desc} [{timing_str}]{freeze_tag}", "10", top + 6 * lh, "cyan", rng))
-
-            if j < len(resolved_actions) - 1:
-                next_a, next_s, next_e = resolved_actions[j + 1]
-                next_desc = (next_a.description or f"Action {next_a.screen_action_id}")[:45]
-                next_label = f"{_fmt_ms(next_s)}-{_fmt_ms(next_e)} A{next_a.screen_action_id}: {next_desc}"
-                parts.append(_dt_file(f"NEXT {next_label}", "10", top + 7 * lh, "gray", rng))
-
-    resolved_ffs: list[tuple[int, int, int]] = []
-    for ff in sorted(freeze_frames, key=lambda f: f.time_ms):
-        ff_start_extended = adjust_timestamp(ff.time_ms, freeze_frames)
-        ff_end_extended = ff_start_extended + ff.duration_ms
-        ff_start_final = adjust_for_cuts(ff_start_extended, gap_cuts)
-        ff_end_final = adjust_for_cuts(ff_end_extended, gap_cuts)
-        if ff_end_final > ff_start_final:
-            resolved_ffs.append((ff_start_final, ff_end_final, ff.duration_ms))
-
-    def _ff_label(s: int, e: int, dur: int) -> str:
-        return f"{_fmt_ms(s)}-{_fmt_ms(e)} FREEZE ({dur}ms)"
-
-    for k, (ff_s, ff_e, ff_dur) in enumerate(resolved_ffs):
-        rng = f"{ff_s / 1000.0:.3f},{ff_e / 1000.0:.3f}"
-        if k > 0:
-            ps, pe, pd = resolved_ffs[k - 1]
-            parts.append(_dt_file(f"PREV {_ff_label(ps, pe, pd)}", "10", top + 9 * lh, "gray", rng))
-        parts.append(_dt_file(f"NOW  {_ff_label(ff_s, ff_e, ff_dur)}", "10", top + 10 * lh, "magenta", rng))
-        if k < len(resolved_ffs) - 1:
-            ns, ne, nd = resolved_ffs[k + 1]
-            parts.append(_dt_file(f"NEXT {_ff_label(ns, ne, nd)}", "10", top + 11 * lh, "gray", rng))
-
     max_end_ms = max(
         (final_timestamps[i] + narrations[i].audio_duration_ms for i in range(len(narrations))),
         default=0,
@@ -200,9 +126,3 @@ def _fmt_ms(ms: int) -> str:
     minutes = int(total_s) // 60
     seconds = total_s - minutes * 60
     return f"{minutes:02d}:{seconds:06.3f}"
-
-
-def _to_final_ms(pos_s: float, freeze_frames: list[FreezeFrame], gap_cuts: list[GapCut]) -> int:
-    ms = int(pos_s * 1000)
-    ms = adjust_timestamp(ms, freeze_frames)
-    return adjust_for_cuts(ms, gap_cuts)

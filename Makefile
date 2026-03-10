@@ -7,7 +7,7 @@ TS_GEN := api/typescript-client/src/generated
 generate: generate-python generate-typescript
 	@echo "Done."
 
-generate-python: $(PY_GEN)/storyboard_types.py $(PY_GEN)/qr_payload_types.py $(PY_GEN)/__init__.py
+generate-python: $(PY_GEN)/storyboard_types.py $(PY_GEN)/config_types.py $(PY_GEN)/__init__.py
 
 $(PY_GEN)/storyboard_types.py: $(COMMON)/storyboard-schema.json
 	@mkdir -p $(PY_GEN)
@@ -21,7 +21,7 @@ $(PY_GEN)/storyboard_types.py: $(COMMON)/storyboard-schema.json
 		--allow-population-by-field-name \
 		--output $@
 
-$(PY_GEN)/qr_payload_types.py: $(COMMON)/qr-payload-schema.json
+$(PY_GEN)/config_types.py: $(COMMON)/config-schema.json
 	@mkdir -p $(PY_GEN)
 	datamodel-codegen \
 		--input $< \
@@ -33,10 +33,15 @@ $(PY_GEN)/qr_payload_types.py: $(COMMON)/qr-payload-schema.json
 		--allow-population-by-field-name \
 		--output $@
 
-$(PY_GEN)/__init__.py: $(PY_GEN)/storyboard_types.py $(PY_GEN)/qr_payload_types.py
+$(PY_GEN)/__init__.py: $(PY_GEN)/storyboard_types.py $(PY_GEN)/config_types.py
 	@printf '%s\n' \
 		'"""Generated types from JSON schemas — do not edit manually."""' \
 		'' \
+		'from screencast_narrator_client.generated.config_types import (' \
+		'    HighlightConfig as HighlightConfigGenerated,' \
+		'    Model as ConfigModel,' \
+		'    RecordingConfig,' \
+		')' \
 		'from screencast_narrator_client.generated.storyboard_types import (' \
 		'    HighlightStyle,' \
 		'    Model as StoryboardModel,' \
@@ -45,33 +50,28 @@ $(PY_GEN)/__init__.py: $(PY_GEN)/storyboard_types.py $(PY_GEN)/qr_payload_types.
 		'    ScreenAction,' \
 		'    ScreenActionTiming,' \
 		'    ScreenActionType,' \
-		'    SyncFrameStyle,' \
-		')' \
-		'from screencast_narrator_client.generated.qr_payload_types import (' \
-		'    MarkerPosition,' \
-		'    SyncType,' \
 		')' \
 		'' \
 		'__all__ = [' \
+		'    "ConfigModel",' \
+		'    "HighlightConfigGenerated",' \
 		'    "HighlightStyle",' \
-		'    "MarkerPosition",' \
 		'    "Narration",' \
 		'    "Options",' \
+		'    "RecordingConfig",' \
 		'    "ScreenAction",' \
 		'    "ScreenActionTiming",' \
 		'    "ScreenActionType",' \
 		'    "StoryboardModel",' \
-		'    "SyncFrameStyle",' \
-		'    "SyncType",' \
 		']' > $@
 
-generate-typescript: $(TS_GEN)/storyboard-types.ts $(TS_GEN)/qr-payload-types.ts
+generate-typescript: $(TS_GEN)/storyboard-types.ts $(TS_GEN)/config-types.ts
 
 $(TS_GEN)/storyboard-types.ts: $(COMMON)/storyboard-schema.json
 	@mkdir -p $(TS_GEN)
 	npx json-schema-to-typescript --unreachableDefinitions $< > $@
 
-$(TS_GEN)/qr-payload-types.ts: $(COMMON)/qr-payload-schema.json
+$(TS_GEN)/config-types.ts: $(COMMON)/config-schema.json
 	@mkdir -p $(TS_GEN)
 	npx json-schema-to-typescript --unreachableDefinitions $< > $@
 
