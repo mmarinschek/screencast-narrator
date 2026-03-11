@@ -60,27 +60,27 @@ jobs:
       - name: Publish main package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  jitpack:
+  maven-central:
     needs: e2e
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger JitPack build
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: GPG_PASSPHRASE
+      - name: Set version from tag
         run: |
-          VERSION=${GITHUB_REF_NAME}
-          echo "Triggering JitPack build for $VERSION..."
-          curl -s "https://jitpack.io/com/github/mmarinschek/screencast-narrator/$VERSION/screencast-narrator-$VERSION.pom" > /dev/null || true
-          for i in $(seq 1 60); do
-            STATUS=$(curl -s "https://jitpack.io/api/builds/com.github.mmarinschek/screencast-narrator/$VERSION" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
-            if [ "$STATUS" = "ok" ]; then
-              echo "JitPack build succeeded for $VERSION"
-              exit 0
-            elif [ "$STATUS" = "Error" ]; then
-              echo "JitPack build FAILED for $VERSION"
-              echo "Check https://jitpack.io/#mmarinschek/screencast-narrator/$VERSION"
-              exit 1
-            fi
-            echo "Waiting for JitPack build... ($i/60)"
-            sleep 5
-          done
-          echo "JitPack build timed out"
-          exit 1
+          VERSION=${GITHUB_REF_NAME#v}
+          mvn versions:set -DnewVersion=$VERSION -f api/java-client/pom.xml -q
+      - name: Publish to Maven Central
+        run: mvn deploy -f api/java-client/pom.xml -Dmaven.deploy.skip=false
+        env:
+          MAVEN_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
