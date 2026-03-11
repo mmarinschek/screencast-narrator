@@ -31,6 +31,7 @@ public class CdpVideoRecorder {
     private OutputStream ffmpegStdin;
     private final AtomicBoolean recording = new AtomicBoolean(false);
     private volatile int frameCount;
+    private volatile int lastSessionId = -1;
 
     public CdpVideoRecorder(Page page, Path outputFile, int width, int height, SharedConfig config) {
         this.page = page;
@@ -59,6 +60,7 @@ public class CdpVideoRecorder {
             if (!recording.get()) return;
             try {
                 String data = event.getAsJsonObject().get("data").getAsString();
+                int sessionId = event.getAsJsonObject().get("sessionId").getAsInt();
 
                 byte[] frameBytes = Base64.getDecoder().decode(data);
                 synchronized (ffmpegStdin) {
@@ -66,10 +68,7 @@ public class CdpVideoRecorder {
                     ffmpegStdin.flush();
                 }
                 frameCount++;
-                // Page.screencastFrameAck intentionally omitted — cdpSession.send()
-                // is synchronous and re-enters the message loop, which can deliver
-                // the next frame event recursively, causing StackOverflowError.
-                // Chrome throttles frame delivery without ack, which is fine here.
+                lastSessionId = sessionId;
             } catch (Exception e) {
                 if (recording.get()) {
                     LOG.warning("Error processing screencast frame: " + e.getMessage());
@@ -91,11 +90,21 @@ public class CdpVideoRecorder {
                 outputFile, width, height, frameCount));
     }
 
+    void ackLatestFrame() {
+        int sid = lastSessionId;
+        if (sid >= 0) {
+            JsonObject ackParams = new JsonObject();
+            ackParams.addProperty("sessionId", sid);
+            cdpSession.send("Page.screencastFrameAck", ackParams);
+        }
+    }
+
     private void waitForMinFrames() {
         RecordingConfig rec = config.recording();
         int maxWaits = 50;
         for (int i = 0; i < maxWaits && frameCount < rec.getMinFrames(); i++) {
             page.waitForTimeout(rec.getMinFrameWaitMs());
+            ackLatestFrame();
         }
         if (frameCount < 1) {
             throw new RuntimeException("CDP screencast: no frames received after " + (maxWaits * rec.getMinFrameWaitMs()) + "ms");

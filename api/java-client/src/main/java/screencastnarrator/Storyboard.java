@@ -214,7 +214,7 @@ public class Storyboard {
         int hid = highlightIdCounter++;
         SharedConfig hlConfig = config.withHighlightOverrides(highlightStyle);
         long startOffset = elapsedMs();
-        Highlight.highlight(page, locator, hlConfig);
+        Highlight.highlight(page, locator, hlConfig, currentRecorder);
         long endOffset = elapsedMs();
         Map<String, Object> hl = new LinkedHashMap<>();
         hl.put("highlightId", hid);
