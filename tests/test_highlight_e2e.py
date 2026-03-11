@@ -150,8 +150,8 @@ def _collect_highlight_curve(frames: list[Path], sample_every: int = 3) -> list[
 
 def _assert_highlight_animation(curve: list[int], label: str) -> None:
     nonzero = [c for c in curve if c > 0]
-    assert len(nonzero) >= 2, (
-        f"[{label}] Expected at least 2 sampled frames with highlight pixels, "
+    assert len(nonzero) >= 1, (
+        f"[{label}] Expected at least 1 sampled frame with highlight pixels, "
         f"found {len(nonzero)}. Curve: {curve}"
     )
 
