@@ -21,6 +21,13 @@ For TTS support (Kokoro):
 pip install screencast-narrator[tts]
 ```
 
+For TTS support (Gemini):
+```bash
+pip install screencast-narrator[tts] google-genai
+```
+
+
+
 System dependencies:
 ```bash
 # macOS

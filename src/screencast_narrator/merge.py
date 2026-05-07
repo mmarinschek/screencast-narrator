@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import sys
+import os
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ from screencast_narrator.ffmpeg import exec_ffmpeg, probe_duration_ms, require_c
 from screencast_narrator.narration_segment import NarrationSegment
 from screencast_narrator.debug_overlay import OverlayResult, generate_overlay_filter
 from screencast_narrator.timeline_html import generate_timeline_html
-from screencast_narrator.tts import EdgeTTS, KokoroTTS, TTSBackend
+from screencast_narrator.tts import EdgeTTS, KokoroTTS, GeminiTTS, TTSBackend
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
     Narration as StoryboardNarration,
@@ -24,7 +25,7 @@ from screencast_narrator_client.generated.storyboard_types import (
 
 def process(
     target_dir: Path,
-    tts_backend: TTSBackend | None = None,
+    tts_backend_factory: Callable[[str], TTSBackend] | None = None,
     offline: bool = False,
     debug_overlay: bool | None = None,
     font_size: int | None = None,
@@ -41,10 +42,11 @@ def process(
             "Use CdpVideoRecorder to record per-narration videos during browser automation."
         )
 
-    if tts_backend is None:
-        language = storyboard_data.get("language", "en")
+    language = storyboard_data.get("language", "en")
+    if tts_backend_factory is None:
         tts_backend = KokoroTTS(language=language) if offline else EdgeTTS(language=language)
-
+    else:
+        tts_backend = tts_backend_factory(language)
     _process_per_narration_videos(
         target_dir, storyboard_data, tts_backend, debug_overlay, font_size
     )
@@ -508,7 +510,7 @@ def _write_timeline(
 def main() -> None:
     if len(sys.argv) < 2:
         print(
-            "Usage: screencast-narrator [--offline] [--debug-overlay] [--font-size N] <target-dir>",
+            "Usage: screencast-narrator [--offline] [--debug-overlay] [--font-size N] [--tts-backend kokoro|edge|gemini] <target-dir>",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -522,7 +524,23 @@ def main() -> None:
         idx = args.index("--font-size")
         font_size = int(args[idx + 1])
         args = args[:idx] + args[idx + 2:]
-    process(Path(args[0]), offline=offline, debug_overlay=debug_overlay, font_size=font_size)
+    tts_backend_factory = None
+    if "--tts-backend" in args:
+        idx = args.index("--tts-backend")
+        tts_backend_name = str(args[idx + 1])
+        if "kokoro" == tts_backend_name:
+            tts_backend_factory = lambda language: KokoroTTS(language=language)
+        elif "edge" == tts_backend_name:
+            tts_backend_factory = lambda language: EdgeTTS(language=language)
+        elif "gemini" == tts_backend_name:
+            api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+            if not api_key:
+                sys.exit("Set GEMINI_API_KEY (or GOOGLE_API_KEY) in the environment.")
+            tts_backend_factory = lambda language: GeminiTTS(api_key=api_key)
+        else:
+            sys.exit("Unsupported tts-backed, use one of: kokoro, edge, gemini")
+        args = args[:idx] + args[idx + 2:]
+    process(Path(args[0]), offline=offline, debug_overlay=debug_overlay, font_size=font_size, tts_backend_factory=tts_backend_factory)
 
 
 if __name__ == "__main__":

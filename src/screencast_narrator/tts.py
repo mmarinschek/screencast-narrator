@@ -167,3 +167,76 @@ class EdgeTTS(TTSBackend):
             check=True,
         )
         mp3_path.unlink()
+
+class GeminiTTS(TTSBackend):
+
+    def __init__(self, api_key: str ) -> None:
+        self._api_key = api_key
+        super().__init__()
+
+    VOICE_MAP: dict[str, str] = {
+        "female-1": "Leda",
+        "female-2": "Zephyr",
+        "female-3": "Callirrhoe",
+        "female-4": "Gacrux",
+        "male-1": "Charon",
+        "male-2": "Algieba",
+        "male-3": "Orus",
+        "male-4": "Schedar",
+    }
+
+    def resolve_voice(self, voice: str) -> str:
+        mapping = self.VOICE_MAP.get(voice)
+        if mapping is None:
+            raise ValueError(
+                f"Unknown voice '{voice}'. Use female-1..{MAX_VOICES_PER_GENDER} or male-1..{MAX_VOICES_PER_GENDER}"
+            )
+        return mapping
+
+    # Set up the wave file to save the output:
+    def wave_file(self, filename, pcm, channels=1, rate=SAMPLE_RATE, sample_width=2):
+        import wave
+        with wave.open(filename, "wb") as wf:
+            wf.setnchannels(channels)
+            wf.setsampwidth(sample_width)
+            wf.setframerate(rate)
+            wf.writeframes(pcm)
+
+    def _generate_raw(self, text: str, output_path: Path, voice: str) -> None:
+        from google import genai
+        from google.genai import types
+        import sys
+        import time
+        client = genai.Client(api_key=self._api_key)
+        config = types.GenerateContentConfig(
+           response_modalities=["AUDIO"],
+           speech_config=types.SpeechConfig(
+              voice_config=types.VoiceConfig(
+                 prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name=voice,
+                 )
+              )
+           ),
+        )
+        delay = 5.0
+        max_retries = 10
+        for attempt in range(max_retries + 1):
+            try:
+                response = client.models.generate_content(
+                   model="gemini-3.1-flash-tts-preview",
+                   contents=text,
+                   config=config
+                )
+                break
+            except Exception as e:
+                status = getattr(e, "code", None) or getattr(e, "status_code", None)
+                is_429 = status == 429 or "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+                if not is_429 or attempt == max_retries:
+                    raise
+                print(f"Gemini TTS rate-limited (attempt {attempt + 1}/{max_retries}); retrying in {delay:.1f}s", file=sys.stderr)
+                time.sleep(delay)
+                delay *= 1.5
+        data = response.candidates[0].content.parts[0].inline_data.data
+
+        self.wave_file(str(output_path), data)
+
