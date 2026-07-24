@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from recording_language import choose_recording_language
 from screencast_narrator.merge import process
 
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -78,7 +79,7 @@ def _choose_recording_language() -> str:
         available.append("typescript")
     if _can_run_java():
         available.append("java")
-    return random.choice(available)
+    return choose_recording_language(available)
 
 
 def _record_with_python(output_dir: Path, html_path: Path, color: str, animation_speed_ms: int) -> None:

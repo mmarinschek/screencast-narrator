@@ -1,9 +1,14 @@
 name: Publish
 
+# Python + Java release tags (v0.6.0). TypeScript client releases use
+# v*-ts tags and are published by publish-npm.yml — without the exclusion
+# here a ts tag would publish mismatched Python/Java artifacts (this
+# happened with v0.4.1-ts/v0.4.2-ts on Maven Central).
 on:
   push:
     tags:
       - "v*"
+      - "!v*-ts"
 
 permissions:
   id-token: write

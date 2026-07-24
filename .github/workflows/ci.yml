@@ -7,6 +7,18 @@ on:
     branches: [main]
 
 jobs:
+  typescript-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build and test TypeScript client
+        run: cd api/typescript-client && npm install && npm run build && npm test
+
   test:
     runs-on: ubuntu-latest
     strategy:

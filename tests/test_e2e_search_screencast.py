@@ -27,7 +27,6 @@ Run:
 
 from __future__ import annotations
 
-import random
 import shutil
 import subprocess
 from pathlib import Path
@@ -38,6 +37,7 @@ playwright = pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright
 from screencast_narrator_client import Storyboard
 
+from recording_language import choose_recording_language
 from screencast_narrator.merge import process
 from wikipedia_search_recording import record_wikipedia_search
 
@@ -112,7 +112,7 @@ def _choose_recording_language() -> str:
         available.append("typescript")
     if _can_run_java():
         available.append("java")
-    return random.choice(available)
+    return choose_recording_language(available)
 
 
 @pytest.mark.e2e
