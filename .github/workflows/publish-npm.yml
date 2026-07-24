@@ -34,7 +34,7 @@ jobs:
           pip install playwright
           playwright install chromium --with-deps
           cd api/typescript-client && npm install && cd ../..
-          npm install --no-save playwright
+          npm install --no-save playwright tsx
       - name: Run TypeScript client build and tests
         run: cd api/typescript-client && npm run build && npm test
       - name: Run e2e tests recording with the TypeScript client
