@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "screencast-narrator"
-version = "0.5.8"
+version = "0.6.0"
 description = "Turn raw screen recordings + narration text into polished narrated screencasts"
 license = "Apache-2.0"
 readme = "README.md"
