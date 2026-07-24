@@ -61,4 +61,13 @@ jobs:
       - name: Install dependencies
         run: cd api/typescript-client && npm install
       - name: Publish to npm
-        run: cd api/typescript-client && npm publish
+        # Skip when the version is already on the registry so a tag for a
+        # locally published release (or a workflow re-run) stays green.
+        run: |
+          cd api/typescript-client
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if npm view "screencast-narrator@$PKG_VERSION" version >/dev/null 2>&1; then
+            echo "screencast-narrator@$PKG_VERSION already on npm — skipping publish"
+          else
+            npm publish
+          fi
