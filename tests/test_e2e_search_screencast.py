@@ -36,9 +36,9 @@ import pytest
 
 playwright = pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright
+from screencast_narrator_client import Storyboard
 
 from screencast_narrator.merge import process
-from screencast_narrator_client import Storyboard
 from wikipedia_search_recording import record_wikipedia_search
 
 _PROJECT_ROOT = Path(__file__).parent.parent

@@ -7,12 +7,12 @@ from pathlib import Path
 
 import qrcode
 from PIL import Image
-
-from screencast_narrator.ffmpeg import exec_ffmpeg, secs
-from screencast_narrator.narration_segment import NarrationSegment
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
 )
+
+from screencast_narrator.ffmpeg import exec_ffmpeg, secs
+from screencast_narrator.narration_segment import NarrationSegment
 
 
 def _find_font() -> str | None:

@@ -28,7 +28,8 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"tests/*" = ["T201", "B011", "PT011"]
+# E402: e2e tests call pytest.importorskip before importing optional dependencies
+"tests/*" = ["T201", "B011", "PT011", "E402"]
 
 [format]
 quote-style = "double"

@@ -5,6 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from screencast_narrator_client.generated.storyboard_types import (
+    Model as StoryboardModel,
+)
+from screencast_narrator_client.generated.storyboard_types import (
+    Narration as StoryboardNarration,
+)
+from screencast_narrator_client.generated.storyboard_types import (
+    Options,
+)
 
 from screencast_narrator.merge import (
     _build_voice_assignments,
@@ -13,11 +22,6 @@ from screencast_narrator.merge import (
     _segment_name,
 )
 from screencast_narrator.tts import TTSBackend
-from screencast_narrator_client.generated.storyboard_types import (
-    Model as StoryboardModel,
-    Narration as StoryboardNarration,
-    Options,
-)
 
 
 class _RecordingTTSBackend(TTSBackend):
@@ -173,7 +177,7 @@ def test_validate_voices_fails_fast_on_invalid_voice(tmp_path: Path) -> None:
 
 
 def test_invalid_gender_rejected_by_schema() -> None:
-    with pytest.raises(Exception, match="female.*male"):
+    with pytest.raises(Exception, match=r"female.*male"):
         _make_storyboard(
             [StoryboardNarration(narration_id=0, text="Hello", voice="nathaly")],
             voices={"nathaly": "robot"},

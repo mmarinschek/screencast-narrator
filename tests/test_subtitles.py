@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from screencast_narrator.narration_segment import NarrationSegment
-from screencast_narrator.merge import _fmt_srt_time, _text_for_display, _text_for_tts, _write_srt
 from screencast_narrator_client.generated.storyboard_types import Narration as StoryboardNarration
+
+from screencast_narrator.merge import _fmt_srt_time, _text_for_display, _text_for_tts, _write_srt
+from screencast_narrator.narration_segment import NarrationSegment
 
 
 def _sb_narrations(texts: list[str]) -> list[StoryboardNarration]:

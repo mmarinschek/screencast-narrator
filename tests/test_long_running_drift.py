@@ -21,8 +21,9 @@ from PIL import Image
 pyzbar = pytest.importorskip("pyzbar.pyzbar")
 decode_qr = pyzbar.decode
 
-from screencast_narrator.merge import process
 from screencast_narrator_client import Storyboard
+
+from screencast_narrator.merge import process
 from wikipedia_search_recording import record_wikipedia_search
 
 REPLAY_COUNT = 100

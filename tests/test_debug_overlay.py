@@ -1,11 +1,14 @@
 """Tests for debug overlay drawtext filter generation."""
 
-from screencast_narrator.debug_overlay import generate_overlay_filter
-from screencast_narrator.narration_segment import NarrationSegment
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
+)
+from screencast_narrator_client.generated.storyboard_types import (
     Narration as StoryboardNarration,
 )
+
+from screencast_narrator.debug_overlay import generate_overlay_filter
+from screencast_narrator.narration_segment import NarrationSegment
 
 
 def _read_all_overlay_texts(tmp_path):

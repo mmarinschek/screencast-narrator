@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 
 import pytest
+from screencast_narrator_client.storyboard import _merge_highlight_styles
 
 from screencast_narrator.storyboard import HighlightStyle, ScreenActionTiming, ScreenActionType, Storyboard
-from screencast_narrator_client.storyboard import _merge_highlight_styles
 
 
 def test_begin_end_narration_creates_entry(tmp_path: Path) -> None:
