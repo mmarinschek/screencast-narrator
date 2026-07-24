@@ -142,11 +142,12 @@ def _count_highlight_pixels(img: Image.Image, step: int = 4, min_saturation: int
 
 
 def _collect_highlight_curve(frames: list[Path], sample_every: int = 3) -> list[int]:
-    curve: list[int] = []
-    for i in range(0, len(frames), sample_every):
-        img = Image.open(frames[i])
-        curve.append(_count_highlight_pixels(img))
-    return curve
+    indices = list(range(0, len(frames), sample_every))
+    # Always sample the final frame: highlight removal repaints a static page
+    # only once, so its evidence can be a single frame at the very end.
+    if indices and indices[-1] != len(frames) - 1:
+        indices.append(len(frames) - 1)
+    return [_count_highlight_pixels(Image.open(frames[i])) for i in indices]
 
 
 def _assert_highlight_animation(curve: list[int], label: str) -> None:
