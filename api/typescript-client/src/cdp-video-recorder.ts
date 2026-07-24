@@ -17,6 +17,7 @@ export class CdpVideoRecorder {
   private ffmpegProcess: ChildProcess | null = null;
   private recording = false;
   private _frameCount = 0;
+  private lastFrameBytes: Buffer = null;
   private frameHandler: ((event: Record<string, unknown>) => void) | null = null;
 
   constructor(page: Page, outputFile: string, width: number, height: number, config: SharedConfig) {
@@ -45,6 +46,7 @@ export class CdpVideoRecorder {
       if (this.ffmpegProcess?.stdin?.writable) {
         this.ffmpegProcess.stdin.write(frameBytes);
       }
+      this.lastFrameBytes = frameBytes;
       this._frameCount++;
       this.cdpSession!.send("Page.screencastFrameAck", { sessionId });
     };
@@ -95,6 +97,14 @@ export class CdpVideoRecorder {
       if (!this.ffmpegProcess?.stdin) {
         resolve();
         return;
+      }
+      if (this.ffmpegProcess?.stdin?.writable && this.lastFrameBytes != null) {
+        // ffmpeg seems to be having problems if there are only 2 or 3 frames. Let's repeat the last frame to have at least 5.
+        while (this._frameCount < 5) {
+          this.ffmpegProcess.stdin.write(this.lastFrameBytes);
+          this._frameCount++;
+        }
+        this.lastFrameBytes = null;
       }
       this.ffmpegProcess.stdin.end(() => {
         this.ffmpegProcess!.on("close", (code) => {
