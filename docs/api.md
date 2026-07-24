@@ -159,17 +159,25 @@ process(Path("my-screencast"))
 ### Custom TTS
 
 ```python
-from screencast_narrator.tts import TTSBackend
-from screencast_narrator.merge import process
 from pathlib import Path
 
+from screencast_narrator.merge import process
+from screencast_narrator.tts import TTSBackend
+
 class MyTTS(TTSBackend):
-    def generate(self, text: str, output_path: Path) -> None:
+    def resolve_voice(self, voice: str) -> str:
+        # map a logical voice name (female-1..4, male-1..4) to a backend voice ID
+        ...
+
+    def _generate_raw(self, text: str, output_path: Path, voice: str) -> None:
         # write a WAV file to output_path
         ...
 
-process(Path("my-screencast"), tts_backend=MyTTS())
+process(Path("my-screencast"), tts_backend_factory=lambda language: MyTTS(language=language))
 ```
+
+Built-in backends: `edge` (default), `kokoro` (offline, `--offline`), `gemini`
+(`--tts-backend gemini`, reads `GEMINI_API_KEY` or `GOOGLE_API_KEY`).
 
 ## Client Libraries
 

@@ -2,25 +2,33 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
-import re
-import sys
 import os
+import re
+import shutil
+import sys
+from collections.abc import Callable
 from pathlib import Path
 
-log = logging.getLogger(__name__)
-
-from screencast_narrator.ffmpeg import exec_ffmpeg, probe_duration_ms, require_command, secs
-from screencast_narrator.narration_segment import NarrationSegment
-from screencast_narrator.debug_overlay import OverlayResult, generate_overlay_filter
-from screencast_narrator.timeline_html import generate_timeline_html
-from screencast_narrator.tts import EdgeTTS, KokoroTTS, GeminiTTS, TTSBackend
 from screencast_narrator_client.generated.storyboard_types import (
     Model as StoryboardModel,
+)
+from screencast_narrator_client.generated.storyboard_types import (
     Narration as StoryboardNarration,
+)
+from screencast_narrator_client.generated.storyboard_types import (
     Options as StoryboardOptions,
 )
+
+from screencast_narrator.debug_overlay import OverlayResult, generate_overlay_filter
+from screencast_narrator.ffmpeg import exec_ffmpeg, probe_duration_ms, require_command, secs
+from screencast_narrator.narration_segment import NarrationSegment
+from screencast_narrator.timeline_html import generate_timeline_html
+from screencast_narrator.tts import EdgeTTS, GeminiTTS, KokoroTTS, TTSBackend
+
+log = logging.getLogger(__name__)
 
 
 def process(
@@ -68,7 +76,6 @@ def _process_per_narration_videos(
     # Positional filenames (segment_000.wav, clip_000.mp4) don't encode content,
     # so a re-run with changed narration text would silently reuse old audio.
     # The TTS backend has its own content-addressed cache, so regeneration is cheap.
-    import shutil
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
     if audio_dir.exists():
@@ -441,7 +448,7 @@ def _overlay_audio(
 
     srt_input_indices: list[tuple[int, str]] = []
     if srt_files:
-        for i, (srt_path, lang) in enumerate(srt_files):
+        for srt_path, lang in srt_files:
             if srt_path.stat().st_size == 0 or not srt_path.read_text(encoding="utf-8").strip():
                 continue
             srt_idx = next_input_idx
@@ -507,40 +514,48 @@ def _write_timeline(
     (target_dir / "timeline.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def _make_tts_backend_factory(backend_name: str) -> Callable[[str], TTSBackend]:
+    if backend_name == "kokoro":
+        return lambda language: KokoroTTS(language=language)
+    if backend_name == "edge":
+        return lambda language: EdgeTTS(language=language)
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        sys.exit("Set GEMINI_API_KEY (or GOOGLE_API_KEY) in the environment.")
+    return lambda language: GeminiTTS(api_key=api_key, language=language)
+
+
 def main() -> None:
-    if len(sys.argv) < 2:
-        print(
-            "Usage: screencast-narrator [--offline] [--debug-overlay] [--font-size N] [--tts-backend kokoro|edge|gemini] <target-dir>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    args = sys.argv[1:]
-    offline = "--offline" in args
-    args = [a for a in args if a != "--offline"]
-    debug_overlay = "--debug-overlay" in args
-    args = [a for a in args if a != "--debug-overlay"]
-    font_size: int | None = None
-    if "--font-size" in args:
-        idx = args.index("--font-size")
-        font_size = int(args[idx + 1])
-        args = args[:idx] + args[idx + 2:]
-    tts_backend_factory = None
-    if "--tts-backend" in args:
-        idx = args.index("--tts-backend")
-        tts_backend_name = str(args[idx + 1])
-        if "kokoro" == tts_backend_name:
-            tts_backend_factory = lambda language: KokoroTTS(language=language)
-        elif "edge" == tts_backend_name:
-            tts_backend_factory = lambda language: EdgeTTS(language=language)
-        elif "gemini" == tts_backend_name:
-            api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-            if not api_key:
-                sys.exit("Set GEMINI_API_KEY (or GOOGLE_API_KEY) in the environment.")
-            tts_backend_factory = lambda language: GeminiTTS(api_key=api_key)
-        else:
-            sys.exit("Unsupported tts-backed, use one of: kokoro, edge, gemini")
-        args = args[:idx] + args[idx + 2:]
-    process(Path(args[0]), offline=offline, debug_overlay=debug_overlay, font_size=font_size, tts_backend_factory=tts_backend_factory)
+    parser = argparse.ArgumentParser(
+        prog="screencast-narrator",
+        description="Merge per-narration videos and TTS audio into a narrated screencast.",
+    )
+    parser.add_argument("--offline", action="store_true", help="use the offline Kokoro TTS backend")
+    parser.add_argument(
+        "--debug-overlay",
+        action="store_const",
+        const=True,
+        default=None,
+        help="burn narration timing overlay into the video",
+    )
+    parser.add_argument("--font-size", type=int, default=None, help="debug overlay font size")
+    parser.add_argument(
+        "--tts-backend",
+        choices=["kokoro", "edge", "gemini"],
+        default=None,
+        help="TTS backend (default: edge, or kokoro with --offline; gemini needs GEMINI_API_KEY)",
+    )
+    parser.add_argument("target_dir", type=Path, help="recording output directory with storyboard.json")
+    parsed = parser.parse_args()
+
+    tts_backend_factory = _make_tts_backend_factory(parsed.tts_backend) if parsed.tts_backend else None
+    process(
+        parsed.target_dir,
+        tts_backend_factory=tts_backend_factory,
+        offline=parsed.offline,
+        debug_overlay=parsed.debug_overlay,
+        font_size=parsed.font_size,
+    )
 
 
 if __name__ == "__main__":

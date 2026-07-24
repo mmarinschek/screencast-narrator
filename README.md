@@ -21,12 +21,10 @@ For TTS support (Kokoro):
 pip install screencast-narrator[tts]
 ```
 
-For TTS support (Gemini):
+For TTS support (Gemini, requires `GEMINI_API_KEY` or `GOOGLE_API_KEY`):
 ```bash
-pip install screencast-narrator[tts] google-genai
+pip install screencast-narrator[gemini]
 ```
-
-
 
 System dependencies:
 ```bash
@@ -83,6 +81,13 @@ process(output_dir)
 
 ```bash
 screencast-narrator /path/to/recording-output/
+
+# Options:
+#   --offline                          use the offline Kokoro TTS backend
+#   --tts-backend kokoro|edge|gemini   select the TTS backend explicitly
+#                                      (gemini reads GEMINI_API_KEY or GOOGLE_API_KEY)
+#   --debug-overlay                    burn narration timing overlay into the video
+#   --font-size N                      debug overlay font size
 ```
 
 The directory must contain:
@@ -119,20 +124,25 @@ The pipeline has these stages:
 
 ## Custom TTS Backend
 
-Implement the `TTSBackend` protocol:
+Subclass `TTSBackend`:
 
 ```python
-from screencast_narrator.tts import TTSBackend
 from pathlib import Path
 
+from screencast_narrator.tts import TTSBackend
+
 class MyTTS(TTSBackend):
-    def generate(self, text: str, output_path: Path) -> None:
-        # Generate audio file at output_path
+    def resolve_voice(self, voice: str) -> str:
+        # Map a logical voice name (female-1..4, male-1..4) to a backend voice ID
         ...
 
-# Use it
+    def _generate_raw(self, text: str, output_path: Path, voice: str) -> None:
+        # Generate a WAV file at output_path
+        ...
+
+# Use it — the factory receives the storyboard language
 from screencast_narrator.merge import process
-process(target_dir, tts_backend=MyTTS())
+process(target_dir, tts_backend_factory=lambda language: MyTTS(language=language))
 ```
 
 ## Development
