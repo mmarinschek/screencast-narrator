@@ -15,6 +15,16 @@ const configPath = resolve(__dir, "..", "common", "config.json");
 export type { HighlightStyle, ScreenActionTiming } from "./generated/storyboard-types.js";
 export type { RecordingConfig, HighlightConfig } from "./generated/config-types.js";
 
+export { createPresenter, PresenterRestartRequested, DEFAULT_THEME } from "./presenter.js";
+export type {
+  Presenter,
+  PresenterContext,
+  PresenterOptions,
+  PresenterTheme,
+  Lang,
+  Caption,
+} from "./presenter.js";
+
 function mergeHighlightStyles(base: HighlightStyle, override: HighlightStyle): HighlightStyle {
   return {
     color: override.color ?? base.color,
