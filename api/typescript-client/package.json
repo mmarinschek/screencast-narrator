@@ -5,6 +5,11 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mmarinschek/screencast-narrator.git",
+    "directory": "api/typescript-client"
+  },
   "license": "Apache-2.0",
   "files": [
     "dist",
