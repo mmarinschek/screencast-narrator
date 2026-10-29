@@ -15,10 +15,11 @@ const configPath = resolve(__dir, "..", "common", "config.json");
 export type { HighlightStyle, ScreenActionTiming } from "./generated/storyboard-types.js";
 export type { RecordingConfig, HighlightConfig } from "./generated/config-types.js";
 
-export { createPresenter, PresenterRestartRequested, DEFAULT_THEME } from "./presenter.js";
+export { createPresenter, PresenterRestartRequested, DEFAULT_THEME, DEFAULT_LABELS } from "./presenter.js";
 export type {
   Presenter,
   PresenterContext,
+  PresenterLabels,
   PresenterOptions,
   PresenterTheme,
   Lang,
