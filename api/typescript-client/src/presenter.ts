@@ -73,7 +73,65 @@ export interface PresenterOptions {
   toastViewportSelector?: string;
   /** Beats between auto-advance ticks in Play mode (ms). */
   autoAdvanceMs?: number;
+  /**
+   * Overrides of the bar's own labels per language, merged over {@link DEFAULT_LABELS}.
+   * The EN⇌DE button switches them together with the captions.
+   */
+  labels?: { [L in Lang]?: Partial<PresenterLabels> };
 }
+
+/** The bar's and the title card's own texts, in one language. */
+export interface PresenterLabels {
+  /** Prefix of the beat counter ("Step 3"). */
+  step: string;
+  next: string;
+  play: string;
+  pause: string;
+  restart: string;
+  /** The armed Restart button, before the second click. */
+  restartConfirm: string;
+  /** The Restart button after the second click. */
+  restarting: string;
+  /** The title card's advance button. */
+  start: string;
+  /** Head of the failure bar. */
+  beatFailed: string;
+  /** Head of the failure bar while the failed beat's action re-runs. */
+  retrying: string;
+  retry: string;
+  skip: string;
+}
+
+export const DEFAULT_LABELS: Readonly<Record<Lang, Readonly<PresenterLabels>>> = {
+  en: {
+    step: "Step",
+    next: "▶ Next",
+    play: "▶▶ Play",
+    pause: "⏸ Pause",
+    restart: "⟲ Restart",
+    restartConfirm: "⟲ Sure? Restart!",
+    restarting: "Restarting…",
+    start: "▶ Start",
+    beatFailed: "Beat failed",
+    retrying: "Retrying…",
+    retry: "⟳ Retry",
+    skip: "▶ Skip & continue",
+  },
+  de: {
+    step: "Schritt",
+    next: "▶ Weiter",
+    play: "▶▶ Abspielen",
+    pause: "⏸ Pause",
+    restart: "⟲ Neustart",
+    restartConfirm: "⟲ Sicher? Neustart!",
+    restarting: "Neustart…",
+    start: "▶ Start",
+    beatFailed: "Schritt fehlgeschlagen",
+    retrying: "Wird wiederholt…",
+    retry: "⟳ Wiederholen",
+    skip: "▶ Überspringen & weiter",
+  },
+};
 
 export const DEFAULT_THEME: PresenterTheme = {
   barBg: "#1d3a5c",
@@ -93,10 +151,13 @@ const POLL_MS = 120;
 export interface Presenter {
   beat(caption: Caption, action?: () => Promise<void>): Promise<void>;
   title(title: Caption, subtitle?: Caption): Promise<void>;
-  /** Show a red failure bar for a failed beat action; resolves with the presenter's choice. */
-  beatFailed(message: string): Promise<"retry" | "skip">;
+  /**
+   * Show a red failure bar for a failed beat action, in the language the EN⇌DE button
+   * last selected; resolves with the presenter's choice.
+   */
+  beatFailed(message: Caption): Promise<"retry" | "skip">;
   /** Repaint the failure bar in a running "Retrying" state while the beat's action re-runs. */
-  beatRetrying(message: string): Promise<void>;
+  beatRetrying(message: Caption): Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -121,6 +182,10 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
   const autoAdvanceMs = opts.autoAdvanceMs ?? DEFAULT_AUTO_ADVANCE_MS;
   const brandLabel = opts.brandLabel ?? "";
   const shotDir = opts.shotDir;
+  const labels: Record<Lang, PresenterLabels> = {
+    en: { ...DEFAULT_LABELS.en, ...opts.labels?.en },
+    de: { ...DEFAULT_LABELS.de, ...opts.labels?.de },
+  };
   let lang: Lang = opts.lang ?? "en";
   let autoPlay = opts.autoPlay ?? false;
   let step = 0;
@@ -196,7 +261,7 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
 
   async function paintBar(caption: string): Promise<void> {
     await page.evaluate(
-      ({ id, style, n, caption, contexts, activeIndex, lang, playing, theme, toastSelector }) => {
+      ({ id, style, n, caption, contexts, activeIndex, lang, labels, playing, theme, toastSelector }) => {
         const w = window as unknown as Record<string, unknown>;
         w.__pAdv = false;
         w.__pLang = false;
@@ -257,7 +322,9 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
         bar.innerHTML =
           '<span style="font:600 12px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:' +
           theme.stepColor +
-          ';white-space:nowrap">Step ' +
+          ';white-space:nowrap">' +
+          esc(labels.step) +
+          " " +
           n +
           "</span>" +
           '<span style="flex:1;font-size:18px;font-weight:600;line-height:1.3">' +
@@ -266,11 +333,11 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
           (contexts.length ? '<span style="display:flex;gap:8px">' + ctxHtml + "</span>" : "") +
           btn("__p_lang", "transparent", lang === "en" ? "DE" : "EN", "8px 12px", "border:1px solid rgba(255,255,255,.28)") +
           (playing
-            ? btn("__p_pause", theme.playBg, "&#9208; Pause")
-            : btn("__p_play", theme.playBg, "&#9654;&#9654; Play")) +
-          btn("__p_restart", "transparent", "&#10226; Restart", "12px 14px",
+            ? btn("__p_pause", theme.playBg, esc(labels.pause))
+            : btn("__p_play", theme.playBg, esc(labels.play))) +
+          btn("__p_restart", "transparent", esc(labels.restart), "12px 14px",
               "border:1px solid rgba(255,255,255,.35);") +
-          btn("__p_next", theme.accent, "&#9654; Next", "12px 24px", "font-size:15px");
+          btn("__p_next", theme.accent, esc(labels.next), "12px 24px", "font-size:15px");
         const wire = (sel: string, flag: string) => {
           const b = bar!.querySelector("#" + sel) as HTMLButtonElement | null;
           if (b) b.onclick = () => ((window as unknown as Record<string, unknown>)[flag] = true);
@@ -299,19 +366,19 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
           let disarmTimer: ReturnType<typeof setTimeout> | undefined;
           const disarm = () => {
             armed = false;
-            restartBtn.innerHTML = "&#10226; Restart";
+            restartBtn.textContent = labels.restart;
             restartBtn.style.background = "transparent";
             restartBtn.style.border = "1px solid rgba(255,255,255,.35)";
           };
           restartBtn.onclick = () => {
             if (armed) {
               if (disarmTimer !== undefined) clearTimeout(disarmTimer);
-              restartBtn.innerHTML = "Restarting…";
+              restartBtn.textContent = labels.restarting;
               (window as unknown as Record<string, unknown>).__pRestart = true;
               return;
             }
             armed = true;
-            restartBtn.innerHTML = "&#10226; Sure? Restart!";
+            restartBtn.textContent = labels.restartConfirm;
             restartBtn.style.background = theme.accentDark;
             restartBtn.style.border = "1px solid " + theme.accentDark;
             disarmTimer = setTimeout(disarm, 4000);
@@ -330,6 +397,7 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
         contexts,
         activeIndex: activeContextIndex(),
         lang,
+        labels: labels[lang],
         playing: autoPlay,
         theme,
         toastSelector,
@@ -339,7 +407,7 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
 
   async function paintFailBar(message: string, retrying = false): Promise<void> {
     await page.evaluate(
-      ({ id, style, message, retrying }) => {
+      ({ id, style, message, retrying, labels }) => {
         const w = window as unknown as Record<string, unknown>;
         w.__pRetry = false;
         w.__pSkip = false;
@@ -369,7 +437,7 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
           '<span style="font:600 12px ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:' +
           (retrying ? "#f0c674" : "#ff8ba0") +
           ';white-space:nowrap">' +
-          (retrying ? "Retrying&#8230;" : "Beat failed") +
+          esc(retrying ? labels.retrying : labels.beatFailed) +
           "</span>" +
           '<span style="flex:1;font-size:15px;font-weight:500;line-height:1.3;pointer-events:auto;user-select:text;cursor:text;color:' +
           (retrying ? "#f5e6c8" : "#ffd9df") +
@@ -378,8 +446,12 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
           "</span>" +
           (retrying
             ? ""
-            : '<button id="__p_retry" style="cursor:pointer;pointer-events:auto;border:none;border-radius:9px;padding:12px 22px;font-size:14px;font-weight:700;background:#3a5a7c;color:#fff">&#10227; Retry</button>' +
-              '<button id="__p_skip" style="cursor:pointer;pointer-events:auto;border:none;border-radius:9px;padding:12px 22px;font-size:14px;font-weight:700;background:#e5285b;color:#fff">&#9654; Skip &amp; continue</button>');
+            : '<button id="__p_retry" style="cursor:pointer;pointer-events:auto;border:none;border-radius:9px;padding:12px 22px;font-size:14px;font-weight:700;background:#3a5a7c;color:#fff">' +
+              esc(labels.retry) +
+              "</button>" +
+              '<button id="__p_skip" style="cursor:pointer;pointer-events:auto;border:none;border-radius:9px;padding:12px 22px;font-size:14px;font-weight:700;background:#e5285b;color:#fff">' +
+              esc(labels.skip) +
+              "</button>");
         const wire = (sel: string, flag: string) => {
           const b = bar!.querySelector("#" + sel) as HTMLButtonElement | null;
           if (b) b.onclick = () => ((window as unknown as Record<string, unknown>)[flag] = true);
@@ -387,13 +459,13 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
         wire("__p_retry", "__pRetry");
         wire("__p_skip", "__pSkip");
       },
-      { id: overlayId, style: barStyle, message, retrying },
+      { id: overlayId, style: barStyle, message, retrying, labels: labels[lang] },
     );
   }
 
   async function paintCard(title: string, subtitle: string): Promise<void> {
     await page.evaluate(
-      ({ id, style, title, subtitle, lang, theme, brandLabel }) => {
+      ({ id, style, title, subtitle, lang, labels, theme, brandLabel }) => {
         const w = window as unknown as Record<string, unknown>;
         w.__pAdv = false;
         w.__pLang = false;
@@ -440,14 +512,16 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
           "</button>" +
           '<button id="__p_next" style="cursor:pointer;border:none;border-radius:9px;padding:13px 28px;font-size:15px;font-weight:700;background:' +
           theme.accent +
-          ';color:#fff">&#9654; Start</button>' +
+          ';color:#fff">' +
+          esc(labels.start) +
+          "</button>" +
           "</div>";
         (card.querySelector("#__p_next") as HTMLButtonElement).onclick = () =>
           ((window as unknown as Record<string, unknown>).__pAdv = true);
         (card.querySelector("#__p_lang") as HTMLButtonElement).onclick = () =>
           ((window as unknown as Record<string, unknown>).__pLang = true);
       },
-      { id: overlayId, style: cardStyle, title, subtitle, lang, theme, brandLabel },
+      { id: overlayId, style: cardStyle, title, subtitle, lang, labels: labels[lang], theme, brandLabel },
     );
   }
 
@@ -562,13 +636,13 @@ export async function createPresenter(page: Page, opts: PresenterOptions = {}): 
     },
 
     async beatRetrying(message) {
-      const repaint = () => paintFailBar(message, true);
+      const repaint = () => paintFailBar(pick(message, lang), true);
       liveRepaint = repaint;
       await repaint().catch(() => {});
     },
 
     async beatFailed(message) {
-      const repaint = () => paintFailBar(message);
+      const repaint = () => paintFailBar(pick(message, lang));
       liveRepaint = repaint;
       clearFileSignals();
       await repaint().catch(() => {});
