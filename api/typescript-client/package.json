@@ -1,6 +1,6 @@
 {
   "name": "screencast-narrator",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "TypeScript client for screencast-narrator: record narrated screencasts from browser automation",
   "type": "module",
   "main": "dist/index.js",

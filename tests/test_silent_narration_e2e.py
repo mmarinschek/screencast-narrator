@@ -25,6 +25,11 @@ from screencast_narrator.storyboard import ScreenActionType, Storyboard
 def test_silent_title_followed_by_narration(tmp_path: Path) -> None:
     """Silent title narration + regular narration → full pipeline produces valid MP4."""
     output_dir = tmp_path / "silent-narration-test"
+    html_path = tmp_path / "demo-page.html"
+    html_path.write_text(
+        "<!doctype html><html><body><h1>Demo page</h1><p>The page the screencast looks at.</p></body></html>",
+        encoding="utf-8",
+    )
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -37,13 +42,13 @@ def test_silent_title_followed_by_narration(tmp_path: Path) -> None:
 
         storyboard.begin_narration()
         storyboard.begin_screen_action(type=ScreenActionType.title, description="Welcome to the demo")
-        page.goto("https://example.com", wait_until="load")
+        page.goto(f"file://{html_path}", wait_until="load")
         page.wait_for_selector("h1", state="visible")
         storyboard.end_screen_action()
         storyboard.end_narration()
 
         storyboard.begin_narration(
-            "This is a narrated screencast. We are looking at the example.com page."
+            "This is a narrated screencast. We are looking at the demo page."
         )
         storyboard.begin_screen_action(description="Read the page content")
         page.wait_for_selector("p", state="visible")
@@ -61,7 +66,7 @@ def test_silent_title_followed_by_narration(tmp_path: Path) -> None:
     assert len(data["narrations"]) == 2
     assert "text" not in data["narrations"][0]
     assert data["narrations"][0]["screenActions"][0]["type"] == "title"
-    assert data["narrations"][1]["text"] == "This is a narrated screencast. We are looking at the example.com page."
+    assert data["narrations"][1]["text"] == "This is a narrated screencast. We are looking at the demo page."
 
     videos_dir = output_dir / "videos"
     mp4_files = list(videos_dir.glob("narration-*.mp4"))
@@ -84,7 +89,7 @@ def test_silent_title_followed_by_narration(tmp_path: Path) -> None:
 
     voiced_narration = timeline["narrations"][1]
     assert voiced_narration["audioDurationMs"] > 0
-    assert voiced_narration["text"] == "This is a narrated screencast. We are looking at the example.com page."
+    assert voiced_narration["text"] == "This is a narrated screencast. We are looking at the demo page."
 
     srt_file = output_mp4.with_suffix(".srt")
     assert srt_file.exists()
