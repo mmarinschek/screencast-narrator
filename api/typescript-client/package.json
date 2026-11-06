@@ -1,6 +1,6 @@
 {
   "name": "screencast-narrator",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "TypeScript client for screencast-narrator: record narrated screencasts from browser automation",
   "type": "module",
   "main": "dist/index.js",
@@ -31,9 +31,9 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^24.0.0",
     "playwright": ">=1.40.0",
     "typescript": "^5.9.0",
-    "vitest": ">=2.0.0"
+    "vitest": "^5.1.0"
   }
 }
